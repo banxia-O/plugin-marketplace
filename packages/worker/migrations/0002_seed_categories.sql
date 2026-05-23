@@ -14,65 +14,51 @@ INSERT INTO categories (name, slug, icon, sort_order) VALUES
   ('安全与运维', 'security', 'Shield',       11),
   ('其他',       'other',    'Package',      12);
 
-INSERT INTO subcategories (category_id, name, slug, sort_order)
-SELECT c.id, s.name, s.slug, s.sort_order
-FROM categories c
-JOIN (
-  SELECT 'search'   AS cat, '搜索引擎' AS name, 'search-engine' AS slug, 1 AS sort_order UNION ALL
-  SELECT 'search',   '网页抓取', 'web-scraping', 2 UNION ALL
-  SELECT 'search',   '新闻资讯', 'news',         3 UNION ALL
-  SELECT 'search',   '知识百科', 'knowledge',    4 UNION ALL
-
-  SELECT 'files',    '文件系统', 'filesystem',   1 UNION ALL
-  SELECT 'files',    '文档处理', 'document',     2 UNION ALL
-  SELECT 'files',    '云存储',   'cloud-storage',3 UNION ALL
-
-  SELECT 'data',     'SQL 数据库',  'sql',        1 UNION ALL
-  SELECT 'data',     'NoSQL 数据库','nosql',      2 UNION ALL
-  SELECT 'data',     '数据可视化',  'viz',        3 UNION ALL
-  SELECT 'data',     '数据处理',    'processing', 4 UNION ALL
-
-  SELECT 'social',   '即时通讯', 'im',           1 UNION ALL
-  SELECT 'social',   '社交媒体', 'social-media', 2 UNION ALL
-  SELECT 'social',   '邮件',     'email',        3 UNION ALL
-
-  SELECT 'office',   '日历日程', 'calendar',     1 UNION ALL
-  SELECT 'office',   '项目管理', 'project',      2 UNION ALL
-  SELECT 'office',   '笔记写作', 'notes',        3 UNION ALL
-  SELECT 'office',   '演示文稿', 'slides',       4 UNION ALL
-
-  SELECT 'dev',      '代码仓库',     'repo',      1 UNION ALL
-  SELECT 'dev',      'CI/CD',        'cicd',      2 UNION ALL
-  SELECT 'dev',      '终端命令行',   'terminal',  3 UNION ALL
-  SELECT 'dev',      'API 与调试',   'api',       4 UNION ALL
-  SELECT 'dev',      '容器与云服务', 'cloud',     5 UNION ALL
-
-  SELECT 'life',     '天气',     'weather',      1 UNION ALL
-  SELECT 'life',     '地图导航', 'map',          2 UNION ALL
-  SELECT 'life',     '出行旅行', 'travel',       3 UNION ALL
-  SELECT 'life',     '购物比价', 'shopping',     4 UNION ALL
-  SELECT 'life',     '时间工具', 'time',         5 UNION ALL
-
-  SELECT 'creative', '图片生成', 'image-gen',    1 UNION ALL
-  SELECT 'creative', '图片处理', 'image-edit',   2 UNION ALL
-  SELECT 'creative', '音频音乐', 'audio',        3 UNION ALL
-  SELECT 'creative', '视频',     'video',        4 UNION ALL
-  SELECT 'creative', 'UI/设计',  'design',       5 UNION ALL
-
-  SELECT 'research', '文献检索',   'literature', 1 UNION ALL
-  SELECT 'research', '医学',       'medical',    2 UNION ALL
-  SELECT 'research', '法律',       'legal',      3 UNION ALL
-  SELECT 'research', '金融',       'finance',    4 UNION ALL
-  SELECT 'research', '数学计算',   'math',       5 UNION ALL
-  SELECT 'research', '生物信息',   'bioinfo',    6 UNION ALL
-  SELECT 'research', '化学材料',   'chem',       7 UNION ALL
-
-  SELECT 'ai',       '记忆与知识', 'memory',     1 UNION ALL
-  SELECT 'ai',       'Prompt 工具','prompt',     2 UNION ALL
-  SELECT 'ai',       '模型管理',   'model',      3 UNION ALL
-  SELECT 'ai',       'Agent 框架', 'agent',      4 UNION ALL
-
-  SELECT 'security', '安全扫描', 'scan',         1 UNION ALL
-  SELECT 'security', '监控告警', 'monitor',      2 UNION ALL
-  SELECT 'security', '网络工具', 'network',      3
-) s ON s.cat = c.slug;
+INSERT INTO subcategories (category_id, name, slug, sort_order) VALUES
+  ((SELECT id FROM categories WHERE slug='search'), '搜索引擎', 'search-engine', 1),
+  ((SELECT id FROM categories WHERE slug='search'), '网页抓取', 'web-scraping', 2),
+  ((SELECT id FROM categories WHERE slug='search'), '新闻资讯', 'news', 3),
+  ((SELECT id FROM categories WHERE slug='search'), '知识百科', 'knowledge', 4),
+  ((SELECT id FROM categories WHERE slug='files'), '文件系统', 'filesystem', 1),
+  ((SELECT id FROM categories WHERE slug='files'), '文档处理', 'document', 2),
+  ((SELECT id FROM categories WHERE slug='files'), '云存储', 'cloud-storage', 3),
+  ((SELECT id FROM categories WHERE slug='data'), 'SQL 数据库', 'sql', 1),
+  ((SELECT id FROM categories WHERE slug='data'), 'NoSQL 数据库', 'nosql', 2),
+  ((SELECT id FROM categories WHERE slug='data'), '数据可视化', 'viz', 3),
+  ((SELECT id FROM categories WHERE slug='data'), '数据处理', 'processing', 4),
+  ((SELECT id FROM categories WHERE slug='social'), '即时通讯', 'im', 1),
+  ((SELECT id FROM categories WHERE slug='social'), '社交媒体', 'social-media', 2),
+  ((SELECT id FROM categories WHERE slug='social'), '邮件', 'email', 3),
+  ((SELECT id FROM categories WHERE slug='office'), '日历日程', 'calendar', 1),
+  ((SELECT id FROM categories WHERE slug='office'), '项目管理', 'project', 2),
+  ((SELECT id FROM categories WHERE slug='office'), '笔记写作', 'notes', 3),
+  ((SELECT id FROM categories WHERE slug='office'), '演示文稿', 'slides', 4),
+  ((SELECT id FROM categories WHERE slug='dev'), '代码仓库', 'repo', 1),
+  ((SELECT id FROM categories WHERE slug='dev'), 'CI/CD', 'cicd', 2),
+  ((SELECT id FROM categories WHERE slug='dev'), '终端命令行', 'terminal', 3),
+  ((SELECT id FROM categories WHERE slug='dev'), 'API 与调试', 'api', 4),
+  ((SELECT id FROM categories WHERE slug='dev'), '容器与云服务', 'cloud', 5),
+  ((SELECT id FROM categories WHERE slug='life'), '天气', 'weather', 1),
+  ((SELECT id FROM categories WHERE slug='life'), '地图导航', 'map', 2),
+  ((SELECT id FROM categories WHERE slug='life'), '出行旅行', 'travel', 3),
+  ((SELECT id FROM categories WHERE slug='life'), '购物比价', 'shopping', 4),
+  ((SELECT id FROM categories WHERE slug='life'), '时间工具', 'time', 5),
+  ((SELECT id FROM categories WHERE slug='creative'), '图片生成', 'image-gen', 1),
+  ((SELECT id FROM categories WHERE slug='creative'), '图片处理', 'image-edit', 2),
+  ((SELECT id FROM categories WHERE slug='creative'), '音频音乐', 'audio', 3),
+  ((SELECT id FROM categories WHERE slug='creative'), '视频', 'video', 4),
+  ((SELECT id FROM categories WHERE slug='creative'), 'UI/设计', 'design', 5),
+  ((SELECT id FROM categories WHERE slug='research'), '文献检索', 'literature', 1),
+  ((SELECT id FROM categories WHERE slug='research'), '医学', 'medical', 2),
+  ((SELECT id FROM categories WHERE slug='research'), '法律', 'legal', 3),
+  ((SELECT id FROM categories WHERE slug='research'), '金融', 'finance', 4),
+  ((SELECT id FROM categories WHERE slug='research'), '数学计算', 'math', 5),
+  ((SELECT id FROM categories WHERE slug='research'), '生物信息', 'bioinfo', 6),
+  ((SELECT id FROM categories WHERE slug='research'), '化学材料', 'chem', 7),
+  ((SELECT id FROM categories WHERE slug='ai'), '记忆与知识', 'memory', 1),
+  ((SELECT id FROM categories WHERE slug='ai'), 'Prompt 工具', 'prompt', 2),
+  ((SELECT id FROM categories WHERE slug='ai'), '模型管理', 'model', 3),
+  ((SELECT id FROM categories WHERE slug='ai'), 'Agent 框架', 'agent', 4),
+  ((SELECT id FROM categories WHERE slug='security'), '安全扫描', 'scan', 1),
+  ((SELECT id FROM categories WHERE slug='security'), '监控告警', 'monitor', 2),
+  ((SELECT id FROM categories WHERE slug='security'), '网络工具', 'network', 3);

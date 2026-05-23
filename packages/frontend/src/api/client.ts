@@ -1,91 +1,48 @@
-import type {
+import {
   CategoriesResponse,
-  PluginDetail,
   PluginDetailResponse,
-  PluginListQuery,
   PluginListResponse,
-  PluginSummary,
+  type PluginListQuery,
 } from '@ppx/shared';
-import { categories as seedCategories, plugins as seedPlugins } from '@ppx/shared/fixtures';
 
-// Phase 1：apiClient 由打包的种子数据驱动。Phase 2 将把实现替换为对真实 Worker 的 fetch，
-// 由于两侧共享 @ppx/shared 的 zod 契约，替换只需改这一个模块。
+// Phase 2：apiClient 改为请求真实 Worker。默认走同源 /api（生产 CF Pages 同域路由）；
+// 本地开发可用 Vite 代理（见 vite.config.ts），或设 VITE_API_BASE 直连 Worker。
+const BASE = import.meta.env.VITE_API_BASE ?? '';
 
-function toSummary(p: PluginDetail): PluginSummary {
-  return {
-    id: p.id,
-    slug: p.slug,
-    name: p.name,
-    oneLiner: p.oneLiner,
-    repoUrl: p.repoUrl,
-    deployMethod: p.deployMethod,
-    reviewStatus: p.reviewStatus,
-    agentMdStatus: p.agentMdStatus,
-    stars: p.stars,
-    downloadCount: p.downloadCount,
-    likeCount: p.likeCount,
-    originalAuthor: p.originalAuthor,
-    categories: p.categories,
-    lastRepoUpdate: p.lastRepoUpdate,
-    updatedAt: p.updatedAt,
-  };
-}
-
-function matchesQuery(p: PluginDetail, q: string): boolean {
-  const hay = [
-    p.name,
-    p.oneLiner,
-    p.descriptionMd,
-    ...p.categories.flatMap((c) => [c.categoryName, c.subcategoryName]),
-  ]
-    .join(' ')
-    .toLowerCase();
-  return hay.includes(q.toLowerCase());
-}
-
-function sortPlugins(list: PluginDetail[], sort: PluginListQuery['sort']): PluginDetail[] {
-  const arr = [...list];
-  switch (sort) {
-    case 'newest':
-      return arr.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    case 'hottest':
-      return arr.sort((a, b) => b.downloadCount - a.downloadCount);
-    case 'top_rated':
-      return arr.sort((a, b) => b.likeCount - a.likeCount);
-    case 'comprehensive':
-    default:
-      return arr.sort(
-        (a, b) => b.downloadCount + b.likeCount * 3 - (a.downloadCount + a.likeCount * 3),
-      );
+async function getJson(path: string): Promise<unknown> {
+  const res = await fetch(`${BASE}${path}`, { headers: { accept: 'application/json' } });
+  if (!res.ok) {
+    let message = `请求失败（${res.status}）`;
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      /* ignore non-JSON error bodies */
+    }
+    throw new Error(message);
   }
+  return res.json();
+}
+
+function buildQuery(query: Partial<PluginListQuery>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+  }
+  const s = params.toString();
+  return s ? `?${s}` : '';
 }
 
 async function getCategories(): Promise<CategoriesResponse> {
-  return { categories: seedCategories };
+  return CategoriesResponse.parse(await getJson('/api/categories'));
 }
 
 async function getPlugins(query: Partial<PluginListQuery> = {}): Promise<PluginListResponse> {
-  const { category, subcategory, deployMethod, q, sort = 'comprehensive', page = 1, pageSize = 24 } = query;
-
-  let list = seedPlugins.filter((p) => p.reviewStatus !== 'rejected');
-  if (category) list = list.filter((p) => p.categories.some((c) => c.categorySlug === category));
-  if (subcategory) list = list.filter((p) => p.categories.some((c) => c.subcategorySlug === subcategory));
-  if (deployMethod) list = list.filter((p) => p.deployMethod === deployMethod);
-  if (q && q.trim()) list = list.filter((p) => matchesQuery(p, q.trim()));
-
-  list = sortPlugins(list, sort);
-
-  const total = list.length;
-  const start = (page - 1) * pageSize;
-  const pageItems = list.slice(start, start + pageSize).map(toSummary);
-
-  return { plugins: pageItems, total, page, pageSize };
+  return PluginListResponse.parse(await getJson(`/api/plugins${buildQuery(query)}`));
 }
 
 async function getPlugin(slug: string): Promise<PluginDetailResponse> {
-  const plugin = seedPlugins.find((p) => p.slug === slug);
-  if (!plugin) throw new Error('插件不存在');
-  return { plugin };
+  return PluginDetailResponse.parse(await getJson(`/api/plugins/${encodeURIComponent(slug)}`));
 }
 
 export const apiClient = { getCategories, getPlugins, getPlugin };

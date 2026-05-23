@@ -17,7 +17,7 @@ export const PluginListQuery = z.object({
   sort: SortOrder.default('comprehensive'),
   q: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(60).default(24),
+  pageSize: z.coerce.number().int().min(1).max(200).default(24),
 });
 export type PluginListQuery = z.infer<typeof PluginListQuery>;
 

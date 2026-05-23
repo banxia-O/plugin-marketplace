@@ -11,6 +11,9 @@ build/
 .wrangler/
 .dev.vars
 
+# generated D1 seed (regenerate via `pnpm --filter @ppx/worker seed:gen`)
+packages/worker/seed/
+
 # env / secrets
 .env
 .env.*
