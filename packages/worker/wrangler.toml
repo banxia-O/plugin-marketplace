@@ -1,0 +1,23 @@
+name = "plugin-marketplace-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-09"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 数据库绑定（database_id 在 `wrangler d1 create` 后填入）
+[[d1_databases]]
+binding = "DB"
+database_name = "plugin-marketplace"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# KV 缓存绑定（id 在 `wrangler kv namespace create` 后填入）
+[[kv_namespaces]]
+binding = "CACHE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# 密钥用 `wrangler secret put` 注入，不写在此文件：
+#   JWT_SECRET            — JWT 签名密钥
+#   GITHUB_CLIENT_SECRET  — GitHub OAuth client secret
+#   REVIEW_SERVICE_SECRET — 墨衍审核服务回写 admin 接口的共享密钥
+[vars]
+GITHUB_CLIENT_ID = ""
