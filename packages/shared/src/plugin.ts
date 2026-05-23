@@ -16,6 +16,7 @@ export const PluginSummary = z.object({
   slug: z.string(),
   name: z.string(),
   oneLiner: z.string(),
+  repoUrl: z.string().url(),
   deployMethod: DeployMethod,
   reviewStatus: ReviewStatus,
   agentMdStatus: AgentMdStatus,
@@ -33,7 +34,6 @@ export type PluginSummary = z.infer<typeof PluginSummary>;
 export const PluginDetail = PluginSummary.extend({
   descriptionMd: z.string(),
   agentMd: z.string().nullable(),
-  repoUrl: z.string().url(),
   originalAuthorUrl: z.string().url().nullable(),
   supportedPlatforms: z.array(z.string()),
   license: z.string(),
