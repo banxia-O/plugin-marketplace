@@ -2,25 +2,29 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { PluginListQuery } from '@ppx/shared';
 import { getCategories, getPluginBySlug, listPlugins } from './db.js';
+import { authMiddleware, authRoutes, findUserById, toAuthUser } from './auth.js';
+import type { AppContext } from './env.js';
 
-export interface Env {
-  DB: D1Database;
-  CACHE: KVNamespace;
-  GITHUB_CLIENT_ID: string;
-  JWT_SECRET: string;
-  GITHUB_CLIENT_SECRET: string;
-  REVIEW_SERVICE_SECRET: string;
-}
+export type { Env } from './env.js';
 
 const CATEGORIES_CACHE_KEY = 'categories:v1';
 const CATEGORIES_TTL = 300;
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<AppContext>();
 
 // 生产走同源 /api，无需 CORS；此处放开便于本地跨端口直连与调试。
 app.use('/api/*', cors());
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
+
+app.route('/api/auth', authRoutes);
+
+// 受保护路由示例：返回当前登录用户（后续 Phase 的上传/点赞等均复用 authMiddleware）
+app.get('/api/me', authMiddleware, async (c) => {
+  const user = await findUserById(c.env.DB, c.get('userId'));
+  if (!user) return c.json({ error: 'not_found', message: '用户不存在' }, 404);
+  return c.json({ user: toAuthUser(user) });
+});
 
 app.get('/api/categories', async (c) => {
   const cached = await c.env.CACHE.get(CATEGORIES_CACHE_KEY, 'json');

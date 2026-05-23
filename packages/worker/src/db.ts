@@ -50,6 +50,104 @@ interface CategoryRefRow extends PluginCategoryRef {
   plugin_id: number;
 }
 
+export interface UserRow {
+  id: number;
+  username: string;
+  email: string | null;
+  password_hash: string | null;
+  github_id: number | null;
+  github_login: string | null;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+export async function findUserById(db: D1Database, id: number): Promise<UserRow | null> {
+  return (await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>()) ?? null;
+}
+
+/** 按用户名或邮箱查找；登录时把用户输入同时当作两者匹配 */
+export async function findUserByUsernameOrEmail(
+  db: D1Database,
+  username: string,
+  email: string | null,
+): Promise<UserRow | null> {
+  if (email) {
+    return (
+      (await db
+        .prepare('SELECT * FROM users WHERE username = ? OR email = ?')
+        .bind(username, email)
+        .first<UserRow>()) ?? null
+    );
+  }
+  return (await db.prepare('SELECT * FROM users WHERE username = ?').bind(username).first<UserRow>()) ?? null;
+}
+
+export async function createUser(
+  db: D1Database,
+  input: { username: string; email: string | null; passwordHash: string },
+): Promise<UserRow> {
+  const row = await db
+    .prepare('INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?) RETURNING *')
+    .bind(input.username, input.email, input.passwordHash)
+    .first<UserRow>();
+  return row as UserRow;
+}
+
+async function usernameTaken(db: D1Database, username: string): Promise<boolean> {
+  return !!(await db.prepare('SELECT 1 AS x FROM users WHERE username = ?').bind(username).first());
+}
+
+async function emailTaken(db: D1Database, email: string): Promise<boolean> {
+  return !!(await db.prepare('SELECT 1 AS x FROM users WHERE email = ?').bind(email).first());
+}
+
+/** github_login 可能与已有用户名冲突，逐次加后缀直到唯一 */
+async function uniqueUsername(db: D1Database, base: string): Promise<string> {
+  const seed = base.trim() || 'github-user';
+  let candidate = seed;
+  let n = 0;
+  while (await usernameTaken(db, candidate)) {
+    n += 1;
+    candidate = `${seed}-${n}`;
+  }
+  return candidate;
+}
+
+export interface GithubProfile {
+  id: number;
+  login: string;
+  avatarUrl: string | null;
+  email: string | null;
+}
+
+/** 以 github_id 为唯一键 upsert；新建时回避用户名/邮箱唯一约束冲突 */
+export async function upsertGithubUser(db: D1Database, gh: GithubProfile): Promise<UserRow> {
+  const existing = await db
+    .prepare('SELECT * FROM users WHERE github_id = ?')
+    .bind(gh.id)
+    .first<UserRow>();
+
+  if (existing) {
+    const updated = await db
+      .prepare(
+        'UPDATE users SET github_login = ?, avatar_url = ?, email = COALESCE(email, ?) WHERE github_id = ? RETURNING *',
+      )
+      .bind(gh.login, gh.avatarUrl, gh.email, gh.id)
+      .first<UserRow>();
+    return updated as UserRow;
+  }
+
+  const username = await uniqueUsername(db, gh.login);
+  const email = gh.email && !(await emailTaken(db, gh.email)) ? gh.email : null;
+  const created = await db
+    .prepare(
+      'INSERT INTO users (username, email, github_id, github_login, avatar_url) VALUES (?, ?, ?, ?, ?) RETURNING *',
+    )
+    .bind(username, email, gh.id, gh.login, gh.avatarUrl)
+    .first<UserRow>();
+  return created as UserRow;
+}
+
 export async function getCategories(db: D1Database): Promise<Category[]> {
   const cats = (await db.prepare('SELECT id, name, slug, icon, sort_order FROM categories ORDER BY sort_order').all<CategoryRow>()).results;
   const subs = (await db.prepare('SELECT id, category_id, name, slug, sort_order FROM subcategories ORDER BY sort_order').all<SubcategoryRow>()).results;
