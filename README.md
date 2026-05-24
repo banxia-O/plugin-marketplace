@@ -39,11 +39,11 @@ MCP 插件生态正在爆发，但国内用户面临三大痛点：
 
 | 文档 | 说明 |
 |------|------|
-| [`插件百宝阁-PRD.md`](插件百宝阁-PRD.md) | 产品需求文档（功能、流程、版本规划） |
-| [`插件百宝阁-分类体系.md`](插件百宝阁-分类体系.md) | 12 大类 + 子类定义、数据库表结构、V1 内容预判 |
-| [`插件百宝阁-前端设计规范.md`](插件百宝阁-前端设计规范.md) | 配色、字体、组件样式、布局、响应式、动效规范 |
+| [`docs/PRD.md`](docs/PRD.md) | 产品需求文档（功能、流程、版本规划） |
+| [`docs/分类体系.md`](docs/分类体系.md) | 12 大类 + 子类定义、数据库表结构、V1 内容预判 |
+| [`docs/前端设计规范.md`](docs/前端设计规范.md) | 配色、字体、组件样式、布局、响应式、动效规范 |
 
-> CC 开工前请按顺序读完以上三份文档。第一件事：建 `docs/` 目录，把三份文档移进去并重命名（去掉"插件百宝阁-"前缀）。
+> CC 开工前请按顺序读完以上三份文档。
 
 ---
 
@@ -65,13 +65,16 @@ MCP 插件生态正在爆发，但国内用户面临三大痛点：
 
 ```
 plugin-marketplace/
-├── 插件百宝阁-PRD.md            # 产品需求文档
-├── 插件百宝阁-分类体系.md        # 分类体系定义
-├── 插件百宝阁-前端设计规范.md     # 前端设计规范
-├── frontend/                   # React 前端（CF Pages）[待建]
-├── worker/                     # Cloudflare Workers 后端 API [待建]
-├── scripts/                    # 工具脚本 [待建]
-│   └── seed/                   # 冷启动：批量爬取+生成 agent.md
+├── docs/                       # 项目文档（PRD / 分类体系 / 前端设计规范）
+├── packages/
+│   ├── shared/                 # 前后端共享的 TS 类型与 zod 契约
+│   ├── frontend/               # React + Vite 前端（CF Pages）
+│   ├── worker/                 # Cloudflare Workers 后端 API（D1 + KV）
+│   └── review-service/         # 墨衍 VPS 审核 + agent.md 生成服务（DeepSeek）
+├── scripts/
+│   └── seed/                   # 冷启动：批量爬取 + 生成 agent.md
+├── pnpm-workspace.yaml
+├── package.json
 ├── README.md
 └── LICENSE
 ```

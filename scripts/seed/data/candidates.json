@@ -1,0 +1,65 @@
+[
+  {
+    "repoUrl": "https://github.com/github/github-mcp-server",
+    "name": "GitHub MCP Server",
+    "oneLiner": "GitHub 官方 MCP 服务器，让 agent 管理仓库、Issue 和 PR",
+    "subcategorySlugs": ["repo"],
+    "deployMethod": "local"
+  },
+  {
+    "repoUrl": "https://github.com/cloudflare/mcp-server-cloudflare",
+    "name": "Cloudflare MCP Server",
+    "oneLiner": "管理 Cloudflare Workers、KV、R2、D1 等云资源",
+    "subcategorySlugs": ["cloud"],
+    "deployMethod": "both"
+  },
+  {
+    "repoUrl": "https://github.com/mendableai/firecrawl-mcp-server",
+    "name": "Firecrawl MCP",
+    "oneLiner": "把任意网站抓取为干净的 Markdown，喂给 agent",
+    "subcategorySlugs": ["web-scraping"],
+    "deployMethod": "both"
+  },
+  {
+    "repoUrl": "https://github.com/tavily-ai/tavily-mcp",
+    "name": "Tavily Search MCP",
+    "oneLiner": "面向 LLM 优化的实时联网搜索",
+    "subcategorySlugs": ["search-engine"],
+    "deployMethod": "remote"
+  },
+  {
+    "repoUrl": "https://github.com/upstash/context7",
+    "name": "Context7",
+    "oneLiner": "为 agent 注入最新的开源库官方文档，告别过时代码",
+    "subcategorySlugs": ["memory", "knowledge"],
+    "deployMethod": "both"
+  },
+  {
+    "repoUrl": "https://github.com/executeautomation/mcp-playwright",
+    "name": "Playwright MCP",
+    "oneLiner": "用 Playwright 驱动浏览器，做网页自动化和测试",
+    "subcategorySlugs": ["api"],
+    "deployMethod": "local"
+  },
+  {
+    "repoUrl": "https://github.com/supabase-community/supabase-mcp",
+    "name": "Supabase MCP",
+    "oneLiner": "让 agent 直接查询和管理 Supabase Postgres 数据库",
+    "subcategorySlugs": ["sql"],
+    "deployMethod": "local"
+  },
+  {
+    "repoUrl": "https://github.com/chroma-core/chroma-mcp",
+    "name": "Chroma MCP",
+    "oneLiner": "向量数据库记忆层，给 agent 长期检索能力",
+    "subcategorySlugs": ["memory"],
+    "deployMethod": "local"
+  },
+  {
+    "repoUrl": "https://github.com/grafana/mcp-grafana",
+    "name": "Grafana MCP",
+    "oneLiner": "查询 Grafana 仪表盘、Prometheus 指标和告警",
+    "subcategorySlugs": ["monitor"],
+    "deployMethod": "both"
+  }
+]
