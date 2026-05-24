@@ -4,6 +4,7 @@ import type {
   PluginDetail,
   PluginListQuery,
   PluginSummary,
+  ReviewPluginData,
   Subcategory,
 } from '@ppx/shared';
 
@@ -310,4 +311,97 @@ export async function getPluginBySlug(db: D1Database, slug: string): Promise<Plu
     license: row.license,
     createdAt: row.created_at,
   };
+}
+
+// ── Submissions ──────────────────────────────────────────────────────────────
+
+interface SubmissionRow {
+  id: number;
+  repo_url: string;
+  uploader_user_id: number | null;
+  status: 'queued' | 'processing' | 'done' | 'rejected';
+  reject_reason: string | null;
+  created_at: string;
+}
+
+export async function isDuplicateRepo(db: D1Database, repoUrl: string): Promise<boolean> {
+  const inPlugins = await db.prepare('SELECT 1 AS x FROM plugins WHERE repo_url = ?').bind(repoUrl).first();
+  if (inPlugins) return true;
+  const inQueue = await db
+    .prepare("SELECT 1 AS x FROM submissions WHERE repo_url = ? AND status != 'rejected'")
+    .bind(repoUrl)
+    .first();
+  return !!inQueue;
+}
+
+export async function insertSubmission(
+  db: D1Database,
+  input: { repoUrl: string; uploaderUserId: number },
+): Promise<{ id: number }> {
+  const row = await db
+    .prepare('INSERT INTO submissions (repo_url, uploader_user_id) VALUES (?, ?) RETURNING id')
+    .bind(input.repoUrl, input.uploaderUserId)
+    .first<{ id: number }>();
+  return row as { id: number };
+}
+
+export async function findSubmissionById(db: D1Database, id: number): Promise<SubmissionRow | null> {
+  return (await db.prepare('SELECT * FROM submissions WHERE id = ?').bind(id).first<SubmissionRow>()) ?? null;
+}
+
+export async function updateSubmissionStatus(
+  db: D1Database,
+  id: number,
+  status: SubmissionRow['status'],
+  rejectReason?: string,
+): Promise<void> {
+  await db
+    .prepare('UPDATE submissions SET status = ?, reject_reason = ? WHERE id = ?')
+    .bind(status, rejectReason ?? null, id)
+    .run();
+}
+
+// ── Plugin insert from review result ─────────────────────────────────────────
+
+export async function insertPluginFromReview(db: D1Database, p: ReviewPluginData): Promise<number> {
+  const row = await db
+    .prepare(
+      `INSERT INTO plugins
+         (name, slug, one_liner, description_md, repo_url, agent_md, agent_md_status,
+          deploy_method, supported_platforms, license, original_author, original_author_url,
+          uploader_user_id, review_status, stars, last_repo_update)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
+    )
+    .bind(
+      p.name,
+      p.slug,
+      p.oneLiner,
+      p.descriptionMd,
+      p.repoUrl,
+      p.agentMd,
+      p.agentMdStatus,
+      p.deployMethod,
+      JSON.stringify(p.supportedPlatforms),
+      p.license,
+      p.originalAuthor,
+      p.originalAuthorUrl,
+      p.uploaderUserId,
+      p.reviewStatus,
+      p.stars,
+      p.lastRepoUpdate,
+    )
+    .first<{ id: number }>();
+  const pluginId = (row as { id: number }).id;
+
+  if (p.subcategoryIds.length > 0) {
+    const stmts = p.subcategoryIds.map((sid) =>
+      db
+        .prepare('INSERT OR IGNORE INTO plugin_categories (plugin_id, subcategory_id) VALUES (?, ?)')
+        .bind(pluginId, sid),
+    );
+    await db.batch(stmts);
+  }
+
+  return pluginId;
 }

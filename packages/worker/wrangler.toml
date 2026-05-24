@@ -21,3 +21,4 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
 #   REVIEW_SERVICE_SECRET — 墨衍审核服务回写 admin 接口的共享密钥
 [vars]
 GITHUB_CLIENT_ID = ""
+REVIEW_SERVICE_URL = ""   # e.g. https://review.md-banxia.cn

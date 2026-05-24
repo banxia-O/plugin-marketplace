@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { PluginListQuery } from '@ppx/shared';
 import { getCategories, getPluginBySlug, listPlugins } from './db.js';
 import { authMiddleware, authRoutes, findUserById, toAuthUser } from './auth.js';
+import { adminRoutes, submissionRoutes } from './submissions.js';
 import type { AppContext } from './env.js';
 
 export type { Env } from './env.js';
@@ -18,6 +19,8 @@ app.use('/api/*', cors());
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
 app.route('/api/auth', authRoutes);
+app.route('/api/submissions', submissionRoutes);
+app.route('/api/admin', adminRoutes);
 
 // 受保护路由示例：返回当前登录用户（后续 Phase 的上传/点赞等均复用 authMiddleware）
 app.get('/api/me', authMiddleware, async (c) => {

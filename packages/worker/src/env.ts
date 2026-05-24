@@ -5,6 +5,7 @@ export interface Env {
   JWT_SECRET: string;
   GITHUB_CLIENT_SECRET: string;
   REVIEW_SERVICE_SECRET: string;
+  REVIEW_SERVICE_URL: string;
 }
 
 export interface Variables {
