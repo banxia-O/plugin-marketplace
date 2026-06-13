@@ -1,7 +1,5 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { sign } from 'hono/jwt';
-import * as bcrypt from 'bcryptjs';
 import { PluginListQuery } from '@ppx/shared';
 import { getCategories, getPluginBySlug, listPlugins } from './db.js';
 import { authMiddleware, authRoutes, findUserById, toAuthUser } from './auth.js';
@@ -24,29 +22,6 @@ app.onError((err, c) => {
 app.use('/api/*', cors());
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
-
-// 临时诊断端点 — 逐步测试 bcrypt / JWT / D1
-app.get('/api/debug', async (c) => {
-  const steps: Record<string, string> = {};
-  try {
-    steps.jwt_secret = c.env.JWT_SECRET ? 'defined' : 'UNDEFINED';
-    steps.db = c.env.DB ? 'defined' : 'UNDEFINED';
-    steps.cache = c.env.CACHE ? 'defined' : 'UNDEFINED';
-  } catch (e: any) { steps.env_check = e.message; }
-  try {
-    const hash = bcrypt.hashSync('test', 10);
-    steps.bcrypt_hash = hash ? 'ok' : 'empty';
-  } catch (e: any) { steps.bcrypt_hash = 'FAIL: ' + e.message; }
-  try {
-    const token = await sign({ sub: 1, exp: Math.floor(Date.now()/1000) + 60 }, c.env.JWT_SECRET, 'HS256');
-    steps.jwt_sign = token ? 'ok' : 'empty';
-  } catch (e: any) { steps.jwt_sign = 'FAIL: ' + e.message; }
-  try {
-    const row = await c.env.DB.prepare('SELECT 1 AS x').first();
-    steps.d1_query = row ? 'ok' : 'empty';
-  } catch (e: any) { steps.d1_query = 'FAIL: ' + e.message; }
-  return c.json(steps);
-});
 
 app.route('/api/auth', authRoutes);
 app.route('/api/submissions', submissionRoutes);
