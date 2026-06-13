@@ -13,6 +13,11 @@ const CATEGORIES_TTL = 300;
 
 const app = new Hono<AppContext>();
 
+app.onError((err, c) => {
+  console.error('[worker error]', err.message, err.stack);
+  return c.json({ error: 'internal', message: err.message }, 500);
+});
+
 // 生产走同源 /api，无需 CORS；此处放开便于本地跨端口直连与调试。
 app.use('/api/*', cors());
 
