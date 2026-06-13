@@ -3,17 +3,17 @@ main = "src/index.ts"
 compatibility_date = "2025-01-09"
 compatibility_flags = ["nodejs_compat"]
 
-# D1 数据库绑定（database_id 在 `wrangler d1 create` 后填入）
+# D1 数据库绑定
 [[d1_databases]]
 binding = "DB"
 database_name = "plugin-marketplace"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "2e9accf5-8e78-4e9b-8810-bbb0bf9f360e"
 migrations_dir = "migrations"
 
-# KV 缓存绑定（id 在 `wrangler kv namespace create` 后填入）
+# KV 缓存绑定
 [[kv_namespaces]]
 binding = "CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "d70868a07c3345058589ca0b1cc2abf2"
 
 # 密钥用 `wrangler secret put` 注入，不写在此文件：
 #   JWT_SECRET            — JWT 签名密钥
