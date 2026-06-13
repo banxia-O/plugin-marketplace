@@ -21,4 +21,4 @@ id = "d70868a07c3345058589ca0b1cc2abf2"
 #   REVIEW_SERVICE_SECRET — 墨衍审核服务回写 admin 接口的共享密钥
 [vars]
 GITHUB_CLIENT_ID = ""
-REVIEW_SERVICE_URL = ""   # e.g. https://review.md-banxia.cn
+REVIEW_SERVICE_URL = "https://review.md-banxia.cn"
