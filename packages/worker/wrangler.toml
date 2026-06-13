@@ -15,10 +15,9 @@ migrations_dir = "migrations"
 binding = "CACHE"
 id = "d70868a07c3345058589ca0b1cc2abf2"
 
-# 密钥用 `wrangler secret put` 注入，不写在此文件：
-#   JWT_SECRET            — JWT 签名密钥
-#   GITHUB_CLIENT_SECRET  — GitHub OAuth client secret
-#   REVIEW_SERVICE_SECRET — 墨衍审核服务回写 admin 接口的共享密钥
 [vars]
 GITHUB_CLIENT_ID = ""
+GITHUB_CLIENT_SECRET = ""
 REVIEW_SERVICE_URL = "https://review.md-banxia.cn"
+JWT_SECRET = "Yk9zL4mNwTpQ2aJ6rXbCvHdEgFh8sUiAxBuM3nKfDqGyJzPv"
+REVIEW_SERVICE_SECRET = "qP3wRsTfGhJkLmNpQrXcVbZnAdEyUiOoMl9bV2sFhKjGtRzW"
