@@ -1,0 +1,12 @@
+name = "plugin-marketplace"
+compatibility_date = "2025-01-09"
+
+# 前端静态资源（SPA）部署。
+# Cloudflare Workers Builds 在仓库根读取本文件，CI 会执行：
+#   pnpm install && pnpm --filter @ppx/frontend build
+#   npx wrangler deploy
+# 然后将 packages/frontend/dist 作为静态资源发布。
+
+[assets]
+directory = "./packages/frontend/dist"
+not_found_handling = "single-page-application"
