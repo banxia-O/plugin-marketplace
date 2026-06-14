@@ -6,6 +6,7 @@ export interface Env {
   GITHUB_CLIENT_SECRET: string;
   REVIEW_SERVICE_SECRET: string;
   REVIEW_SERVICE_URL: string;
+  GITHUB_TOKEN?: string;
 }
 
 export interface Variables {
