@@ -37,11 +37,11 @@ export function PluginDetailPage() {
 
       <div className="detail-layout">
         <div>
-          <div className="detail-card" style={{ marginBottom: 'var(--space-6)' }}>
-            <Markdown content={p.descriptionMd} />
-          </div>
-
           <h2 className="section__title">📖 agent.md</h2>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: 13, margin: '0 0 var(--space-4)' }}>
+            agent.md 是面向 AI agent 优化的精简手册，由审核 AI 根据源仓库 README 自动生成。
+            若需查看原始 README，建议前往源仓库。
+          </p>
           {p.agentMd ? (
             <div className="detail-card">
               <Markdown content={p.agentMd} />
