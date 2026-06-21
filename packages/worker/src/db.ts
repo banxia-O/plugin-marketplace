@@ -227,6 +227,7 @@ const SORT_SQL: Record<PluginListQuery['sort'], string> = {
   newest: 'created_at DESC, id DESC',
   hottest: 'download_count DESC, id DESC',
   top_rated: 'like_count DESC, id DESC',
+  trending: 'p.stars DESC, id DESC',
 };
 
 function buildWhere(query: PluginListQuery): { clause: string; args: unknown[] } {
@@ -311,6 +312,41 @@ export async function getPluginBySlug(db: D1Database, slug: string): Promise<Plu
     license: row.license,
     createdAt: row.created_at,
   };
+}
+
+// ── Trending（飙升榜） ──────────────────────────────────────────────────────
+
+interface TrendingRow extends PluginRow {
+  star_delta: number;
+}
+
+export async function getTrendingPlugins(
+  db: D1Database,
+  limit = 8,
+): Promise<PluginSummary[]> {
+  const rows = (
+    await db
+      .prepare(
+        `SELECT p.*, (p.stars - COALESCE(s.stars, p.stars)) AS star_delta
+         FROM plugins p
+         LEFT JOIN star_snapshots s
+           ON s.plugin_id = p.id
+           AND s.snapshot_date = (
+             SELECT MAX(snapshot_date) FROM star_snapshots
+             WHERE plugin_id = p.id AND snapshot_date <= date('now', '-30 days')
+           )
+         WHERE p.review_status != 'rejected'
+           AND (p.stars - COALESCE(s.stars, p.stars)) >= 5
+         ORDER BY (p.stars - COALESCE(s.stars, p.stars))
+                  * (1.0 + sqrt(CAST((p.stars - COALESCE(s.stars, p.stars)) AS REAL) / MAX(COALESCE(s.stars, 1), 1))) DESC
+         LIMIT ?`,
+      )
+      .bind(limit)
+      .all<TrendingRow>()
+  ).results;
+
+  const refs = await refsFor(db, rows.map((r) => r.id));
+  return rows.map((r) => toSummary(r, refs.get(r.id) ?? []));
 }
 
 // ── Submissions ──────────────────────────────────────────────────────────────

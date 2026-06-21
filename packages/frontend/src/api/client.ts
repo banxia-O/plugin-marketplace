@@ -56,6 +56,11 @@ function buildQuery(query: Partial<PluginListQuery>): string {
   return s ? `?${s}` : '';
 }
 
+async function getTrending(): Promise<PluginListResponse> {
+  const raw = (await getJson('/api/trending')) as { plugins: unknown[] };
+  return PluginListResponse.parse({ plugins: raw.plugins, total: raw.plugins.length, page: 1, pageSize: raw.plugins.length });
+}
+
 async function getCategories(): Promise<CategoriesResponse> {
   return CategoriesResponse.parse(await getJson('/api/categories'));
 }
@@ -93,6 +98,7 @@ export const apiClient = {
   getCategories,
   getPlugins,
   getPlugin,
+  getTrending,
   register,
   login,
   getMe,

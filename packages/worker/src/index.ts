@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { PluginListQuery } from '@ppx/shared';
-import { getCategories, getPluginBySlug, listPlugins } from './db.js';
+import { getCategories, getPluginBySlug, getTrendingPlugins, listPlugins } from './db.js';
 import { authMiddleware, authRoutes, findUserById, toAuthUser } from './auth.js';
 import { adminRoutes, submissionRoutes } from './submissions.js';
 import type { AppContext } from './env.js';
@@ -61,6 +61,18 @@ app.get('/api/search', async (c) => {
   }
   const { plugins, total } = await listPlugins(c.env.DB, parsed.data);
   return c.json({ plugins, total, page: parsed.data.page, pageSize: parsed.data.pageSize });
+});
+
+const TRENDING_CACHE_KEY = 'trending:v1';
+const TRENDING_TTL = 3600;
+
+app.get('/api/trending', async (c) => {
+  const cached = await c.env.CACHE.get(TRENDING_CACHE_KEY, 'json');
+  if (cached) return c.json({ plugins: cached });
+
+  const plugins = await getTrendingPlugins(c.env.DB);
+  await c.env.CACHE.put(TRENDING_CACHE_KEY, JSON.stringify(plugins), { expirationTtl: TRENDING_TTL });
+  return c.json({ plugins });
 });
 
 app.get('/api/plugins/:slug', async (c) => {
