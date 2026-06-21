@@ -391,11 +391,18 @@ body::after {
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(20, 18, 38, 0.25) 0%,
-    rgba(20, 18, 38, 0.5) 100%
+    rgba(20, 18, 38, 0.08) 0%,
+    rgba(20, 18, 38, 0.32) 100%
   );
   pointer-events: none;
   z-index: 0;
+}
+[data-theme='dark'] .hero__overlay {
+  background: linear-gradient(
+    to bottom,
+    rgba(20, 18, 38, 0.25) 0%,
+    rgba(20, 18, 38, 0.5) 100%
+  );
 }
 .hero__content {
   position: relative;
@@ -407,14 +414,14 @@ body::after {
   margin: 0 0 var(--space-3);
   color: #ffffff;
   letter-spacing: 0.04em;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.55), 0 1px 4px rgba(0, 0, 0, 0.55);
 }
 .hero__subtitle {
   font-size: clamp(15px, 2.5vw, 19px);
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.95);
   margin: 0 0 var(--space-8);
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
 }
 .hero__search {
   display: flex;
