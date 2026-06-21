@@ -29,9 +29,10 @@ export function HomePage() {
   return (
     <>
       <section className="hero">
-        <div className="container">
-          <h1 className="hero__title">🏪 插件百宝阁</h1>
-          <p className="hero__subtitle">给你的 AI 找趁手的工具</p>
+        <div className="hero__overlay" aria-hidden />
+        <div className="container hero__content">
+          <h1 className="hero__title">插件百宝阁</h1>
+          <p className="hero__subtitle">半夏筛选的 AI 工具与 MCP 插件地图</p>
           <div className="hero__search">
             <SearchBox autoFocus />
           </div>

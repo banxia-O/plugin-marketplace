@@ -6,6 +6,8 @@ import { authMiddleware, authRoutes, findUserById, toAuthUser } from './auth.js'
 import { adminRoutes, submissionRoutes } from './submissions.js';
 import type { AppContext } from './env.js';
 
+import { syncRepoMetadata } from './sync.js';
+
 export type { Env } from './env.js';
 
 const CATEGORIES_CACHE_KEY = 'categories:v1';
@@ -69,4 +71,9 @@ app.get('/api/plugins/:slug', async (c) => {
   return c.json({ plugin });
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledEvent, env: import('./env.js').Env, ctx: ExecutionContext) {
+    ctx.waitUntil(syncRepoMetadata(env));
+  },
+};

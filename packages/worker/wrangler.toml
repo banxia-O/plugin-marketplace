@@ -15,9 +15,11 @@ migrations_dir = "migrations"
 binding = "CACHE"
 id = "d70868a07c3345058589ca0b1cc2abf2"
 
+# 每天 UTC 17:00（北京时间凌晨 1:00）同步 GitHub 仓库元数据
+[triggers]
+crons = ["0 17 * * *"]
+
+# 敏感变量通过 CF Dashboard → Workers → 变量和机密 配置，不写入代码仓库
 [vars]
 GITHUB_CLIENT_ID = "Ov23licU8Aof4Y08e25v"
-GITHUB_CLIENT_SECRET = "c6569a25c3ff01a24a6d07b9021ad1e4da51f9b0"
 REVIEW_SERVICE_URL = "https://review.md-banxia.cn"
-JWT_SECRET = "Yk9zL4mNwTpQ2aJ6rXbCvHdEgFh8sUiAxBuM3nKfDqGyJzPv"
-REVIEW_SERVICE_SECRET = "qP3wRsTfGhJkLmNpQrXcVbZnAdEyUiOoMl9bV2sFhKjGtRzW"
