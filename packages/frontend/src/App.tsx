@@ -7,6 +7,7 @@ import { PluginDetailPage } from './pages/PluginDetailPage.js';
 import { SearchPage } from './pages/SearchPage.js';
 import { UploadPage } from './pages/UploadPage.js';
 import { AuthProvider } from './lib/auth.js';
+import { ThemeProvider } from './lib/theme.js';
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
@@ -18,20 +19,22 @@ function ScrollToTop() {
 
 export function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <ScrollToTop />
-        <Layout>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/category/:slug" element={<CategoryPage />} />
-            <Route path="/plugin/:slug" element={<PluginDetailPage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/upload" element={<UploadPage />} />
-            <Route path="*" element={<HomePage />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <ScrollToTop />
+          <Layout>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/category/:slug" element={<CategoryPage />} />
+              <Route path="/plugin/:slug" element={<PluginDetailPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/upload" element={<UploadPage />} />
+              <Route path="*" element={<HomePage />} />
+            </Routes>
+          </Layout>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
