@@ -13,5 +13,5 @@ export const AgentMdStatus = z.enum(['ok', 'pending', 'incomplete']);
 export type AgentMdStatus = z.infer<typeof AgentMdStatus>;
 
 /** 排序方式 */
-export const SortOrder = z.enum(['comprehensive', 'newest', 'hottest', 'top_rated']);
+export const SortOrder = z.enum(['comprehensive', 'newest', 'hottest', 'top_rated', 'trending']);
 export type SortOrder = z.infer<typeof SortOrder>;

@@ -54,11 +54,14 @@ export async function syncRepoMetadata(env: Env): Promise<{ synced: number; fail
         continue;
       }
 
-      await env.DB.prepare(
-        'UPDATE plugins SET stars = ?, last_repo_update = ?, updated_at = datetime(\'now\') WHERE id = ?',
-      )
-        .bind(meta.stargazers_count, meta.pushed_at, p.id)
-        .run();
+      await env.DB.batch([
+        env.DB.prepare(
+          'UPDATE plugins SET stars = ?, last_repo_update = ?, updated_at = datetime(\'now\') WHERE id = ?',
+        ).bind(meta.stargazers_count, meta.pushed_at, p.id),
+        env.DB.prepare(
+          'INSERT OR REPLACE INTO star_snapshots (plugin_id, stars, snapshot_date) VALUES (?, ?, date(\'now\'))',
+        ).bind(p.id, meta.stargazers_count),
+      ]);
 
       synced++;
     } catch {

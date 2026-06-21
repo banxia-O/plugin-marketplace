@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { Flame, Sparkles, LayoutGrid } from 'lucide-react';
+import { Dna, Flame, LayoutGrid, Sparkles, TrendingUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client.js';
 import { useAsync } from '../lib/useAsync.js';
 import { SearchBox } from '../components/SearchBox.js';
@@ -10,6 +11,7 @@ export function HomePage() {
   const categoriesState = useAsync(() => apiClient.getCategories(), []);
   const hotState = useAsync(() => apiClient.getPlugins({ sort: 'hottest', pageSize: 8 }), []);
   const newState = useAsync(() => apiClient.getPlugins({ sort: 'newest', pageSize: 8 }), []);
+  const trendingState = useAsync(() => apiClient.getTrending(), []);
   const allState = useAsync(() => apiClient.getPlugins({ pageSize: 200 }), []);
 
   const countByCategory = useMemo(() => {
@@ -26,6 +28,8 @@ export function HomePage() {
     return map;
   }, [allState.data]);
 
+  const trendingPlugins = trendingState.data?.plugins ?? [];
+
   return (
     <>
       <section className="hero">
@@ -40,6 +44,39 @@ export function HomePage() {
       </section>
 
       <div className="container">
+        {/* 两张入口卡片 */}
+        <section className="section">
+          <div className="entry-cards">
+            <Link to="/category/biomed" className="entry-card entry-card--trending">
+              <TrendingUp size={28} />
+              <div>
+                <h3 className="entry-card__title">⭐ 飙升榜</h3>
+                <p className="entry-card__desc">近 30 天 GitHub Star 增长最快的插件</p>
+              </div>
+              {trendingPlugins.length > 0 && (
+                <span className="entry-card__badge">{trendingPlugins.length} 个上榜</span>
+              )}
+            </Link>
+            <Link to="/zone/biomed" className="entry-card entry-card--biomed">
+              <Dna size={28} />
+              <div>
+                <h3 className="entry-card__title">生物医药科研</h3>
+                <p className="entry-card__desc">半夏私藏的生信、医学影像、基因分析工具</p>
+              </div>
+            </Link>
+          </div>
+        </section>
+
+        {/* 飙升榜（有数据才显示） */}
+        {trendingPlugins.length > 0 && (
+          <section className="section">
+            <h2 className="section__title">
+              <TrendingUp size={20} color="var(--danger)" /> 近月飙升
+            </h2>
+            <PluginGrid plugins={trendingPlugins} />
+          </section>
+        )}
+
         <section className="section">
           <h2 className="section__title">
             <Flame size={20} color="var(--accent-warm)" /> 热门推荐
