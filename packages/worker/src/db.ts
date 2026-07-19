@@ -5,6 +5,7 @@ import type {
   PluginListQuery,
   PluginSummary,
   ReviewPluginData,
+  StoredReviewJobPayload,
   Subcategory,
 } from '@ppx/shared';
 
@@ -351,20 +352,33 @@ export async function getTrendingPlugins(
 
 // ── Submissions ──────────────────────────────────────────────────────────────
 
-interface SubmissionRow {
+export interface SubmissionRow {
   id: number;
   repo_url: string;
   uploader_user_id: number | null;
-  status: 'queued' | 'processing' | 'done' | 'rejected';
+  status: import('./submission-state.js').SubmissionStatus;
   reject_reason: string | null;
+  payload_version: number;
+  job_payload_json: string;
+  attempt_count: number;
+  max_attempts: number;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  idempotency_key: string | null;
+  next_attempt_at: string | null;
+  processing_started_at: string | null;
+  completed_at: string | null;
+  correlation_id: string | null;
+  last_callback_attempt: number | null;
   created_at: string;
+  updated_at: string;
 }
 
 export async function isDuplicateRepo(db: D1Database, repoUrl: string): Promise<boolean> {
-  const inPlugins = await db.prepare('SELECT 1 AS x FROM plugins WHERE repo_url = ?').bind(repoUrl).first();
+  const inPlugins = await db.prepare('SELECT 1 AS x FROM plugins WHERE lower(repo_url) = lower(?)').bind(repoUrl).first();
   if (inPlugins) return true;
   const inQueue = await db
-    .prepare("SELECT 1 AS x FROM submissions WHERE repo_url = ? AND status != 'rejected'")
+    .prepare("SELECT 1 AS x FROM submissions WHERE lower(repo_url) = lower(?) AND status NOT IN ('rejected', 'failed', 'dead_letter')")
     .bind(repoUrl)
     .first();
   return !!inQueue;
@@ -372,34 +386,90 @@ export async function isDuplicateRepo(db: D1Database, repoUrl: string): Promise<
 
 export async function insertSubmission(
   db: D1Database,
-  input: { repoUrl: string; uploaderUserId: number },
-): Promise<{ id: number }> {
-  const row = await db
-    .prepare('INSERT INTO submissions (repo_url, uploader_user_id) VALUES (?, ?) RETURNING id')
-    .bind(input.repoUrl, input.uploaderUserId)
-    .first<{ id: number }>();
-  return row as { id: number };
+  input: {
+    repoUrl: string;
+    uploaderUserId: number;
+    idempotencyKey: string;
+    payload: StoredReviewJobPayload;
+    correlationId?: string;
+  },
+): Promise<{ submission: SubmissionRow; created: boolean }> {
+  const inserted = await db
+    .prepare(`INSERT OR IGNORE INTO submissions
+      (repo_url, uploader_user_id, payload_version, job_payload_json, idempotency_key, correlation_id, next_attempt_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now')) RETURNING *`)
+    .bind(
+      input.repoUrl,
+      input.uploaderUserId,
+      input.payload.payloadVersion,
+      JSON.stringify(input.payload),
+      input.idempotencyKey,
+      input.correlationId ?? null,
+    )
+    .first<SubmissionRow>();
+  if (inserted) return { submission: inserted, created: true };
+  const existing = await findSubmissionByIdempotencyKey(db, input.idempotencyKey);
+  if (!existing) throw new Error('Submission idempotency conflict could not be resolved');
+  return { submission: existing, created: false };
+}
+
+export async function findSubmissionByIdempotencyKey(
+  db: D1Database,
+  idempotencyKey: string,
+): Promise<SubmissionRow | null> {
+  return (
+    (await db.prepare('SELECT * FROM submissions WHERE idempotency_key = ?').bind(idempotencyKey).first<SubmissionRow>()) ?? null
+  );
 }
 
 export async function findSubmissionById(db: D1Database, id: number): Promise<SubmissionRow | null> {
   return (await db.prepare('SELECT * FROM submissions WHERE id = ?').bind(id).first<SubmissionRow>()) ?? null;
 }
 
-export async function updateSubmissionStatus(
+export async function transitionSubmissionStatus(
   db: D1Database,
   id: number,
-  status: SubmissionRow['status'],
-  rejectReason?: string,
-): Promise<void> {
-  await db
-    .prepare('UPDATE submissions SET status = ?, reject_reason = ? WHERE id = ?')
-    .bind(status, rejectReason ?? null, id)
+  from: SubmissionRow['status'],
+  to: SubmissionRow['status'],
+  input: {
+    rejectReason?: string | null;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    nextAttemptAt?: string | null;
+    callbackAttempt?: number;
+  } = {},
+): Promise<boolean> {
+  const { assertSubmissionTransition } = await import('./submission-state.js');
+  assertSubmissionTransition(from, to);
+  const terminal = ['done', 'rejected', 'failed', 'dead_letter'].includes(to);
+  const result = await db
+    .prepare(`UPDATE submissions SET
+      status = ?, reject_reason = ?, last_error_code = ?, last_error_message = ?, next_attempt_at = ?,
+      last_callback_attempt = COALESCE(?, last_callback_attempt),
+      completed_at = CASE WHEN ? THEN datetime('now') ELSE completed_at END,
+      updated_at = datetime('now')
+      WHERE id = ? AND status = ?`)
+    .bind(
+      to,
+      input.rejectReason ?? null,
+      input.errorCode ?? null,
+      input.errorMessage?.replace(/[\r\n\t]+/g, ' ').slice(0, 500) ?? null,
+      input.nextAttemptAt ?? null,
+      input.callbackAttempt ?? null,
+      terminal ? 1 : 0,
+      id,
+      from,
+    )
     .run();
+  return (result.meta.changes ?? 0) === 1;
 }
 
 // ── Plugin insert from review result ─────────────────────────────────────────
 
 export async function insertPluginFromReview(db: D1Database, p: ReviewPluginData): Promise<number> {
+  const existing = await db.prepare('SELECT id FROM plugins WHERE repo_url = ?').bind(p.repoUrl).first<{ id: number }>();
+  if (existing) return existing.id;
+
   const row = await db
     .prepare(
       `INSERT INTO plugins

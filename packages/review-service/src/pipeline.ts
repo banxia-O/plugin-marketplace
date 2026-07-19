@@ -9,6 +9,7 @@ import {
   parseGithubUrl,
 } from './github.js';
 import type { ReviewEnv } from './env.js';
+import { ReviewError, toReviewError } from './errors.js';
 
 function toSlug(s: string): string {
   return s
@@ -22,54 +23,84 @@ async function callbackWorker(env: ReviewEnv, result: ReviewResultPayload): Prom
     console.warn('[pipeline] WORKER_URL 未配置，跳过回写');
     return;
   }
-  const res = await fetch(`${env.WORKER_URL}/api/admin/review-result`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-review-secret': env.REVIEW_SERVICE_SECRET },
-    body: JSON.stringify(result),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${env.WORKER_URL}/api/admin/review-result`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-review-secret': env.REVIEW_SERVICE_SECRET },
+      body: JSON.stringify(result),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new ReviewError('callback_error', 'Worker callback 网络请求失败', true, 'technical');
+  }
   if (!res.ok) {
-    throw new Error(`Worker callback 返回 ${res.status}: ${await res.text()}`);
+    throw new ReviewError('callback_error', `Worker callback 返回 ${res.status}`, true, 'technical');
   }
 }
 
-async function reject(env: ReviewEnv, submissionId: number, reason: string): Promise<void> {
-  console.log(`[pipeline] #${submissionId} 拒绝：${reason}`);
-  await callbackWorker(env, { status: 'rejected', submissionId, rejectReason: reason });
+function callbackKey(job: ReviewJobPayload, status: ReviewResultPayload['status']): string {
+  return `${job.idempotencyKey}:${job.deliveryAttempt}:${status}`;
 }
 
-export async function runPipeline(env: ReviewEnv, job: ReviewJobPayload): Promise<void> {
+async function reject(
+  env: ReviewEnv,
+  job: ReviewJobPayload,
+  code: 'business_rejection' | 'github_not_found',
+  reason: string,
+): Promise<void> {
+  const { submissionId } = job;
+  console.log(`[pipeline] #${submissionId} 拒绝：${reason}`);
+  await callbackWorker(env, {
+    status: 'rejected',
+    submissionId,
+    deliveryAttempt: job.deliveryAttempt,
+    callbackKey: callbackKey(job, 'rejected'),
+    reasonCode: code,
+    rejectReason: reason,
+  });
+}
+
+async function fail(env: ReviewEnv, job: ReviewJobPayload, error: ReviewError): Promise<void> {
+  await callbackWorker(env, {
+    status: 'failed',
+    submissionId: job.submissionId,
+    deliveryAttempt: job.deliveryAttempt,
+    callbackKey: callbackKey(job, 'failed'),
+    errorCode: error.code as Exclude<ReviewError['code'], 'business_rejection' | 'github_not_found'>,
+    errorMessage: error.message.replace(/[\r\n\t]+/g, ' ').slice(0, 500),
+    retryable: error.retryable,
+    retryAfterMs: error.retryAfterMs,
+  });
+}
+
+async function executePipeline(env: ReviewEnv, job: ReviewJobPayload): Promise<void> {
   const { submissionId, repoUrl, name, oneLiner, subcategoryIds, deployMethod, originalAuthor, uploaderUserId } = job;
   console.log(`[pipeline] #${submissionId} 开始审核：${repoUrl}`);
 
   // Step 0: 解析 GitHub URL
   const parsed = parseGithubUrl(repoUrl);
   if (!parsed) {
-    await reject(env, submissionId, '仓库地址不是有效的 GitHub 仓库 URL');
+    await reject(env, job, 'business_rejection', '仓库地址不是有效的 GitHub 仓库 URL');
     return;
   }
   const { owner, repo } = parsed;
 
   // Step 1: 获取仓库元信息
-  let meta;
-  try {
-    meta = await fetchRepoMeta(owner, repo, env.GITHUB_TOKEN);
-  } catch (e) {
-    await reject(env, submissionId, e instanceof Error ? e.message : '无法访问 GitHub 仓库');
-    return;
-  }
+  const meta = await fetchRepoMeta(owner, repo, env.GITHUB_TOKEN);
   if (meta.isPrivate) {
-    await reject(env, submissionId, '仓库为私有仓库，不支持收录');
+    await reject(env, job, 'business_rejection', '仓库为私有仓库，不支持收录');
     return;
   }
   if (meta.isArchived) {
-    await reject(env, submissionId, '仓库已归档，不再维护');
+    await reject(env, job, 'business_rejection', '仓库已归档，不再维护');
     return;
   }
 
   // Step 2: 许可证闸门
   const licenseCheck = checkLicense(meta.license);
   if (!licenseCheck.allowed) {
-    await reject(env, submissionId, licenseCheck.reason ?? '许可证不符合收录条件');
+    await reject(env, job, 'business_rejection', licenseCheck.reason ?? '许可证不符合收录条件');
     return;
   }
 
@@ -84,7 +115,7 @@ export async function runPipeline(env: ReviewEnv, job: ReviewJobPayload): Promis
   }
   if (!scanResult.safe) {
     const reason = `代码安全扫描未通过：${scanResult.concerns.join('；')}`;
-    await reject(env, submissionId, reason);
+    await reject(env, job, 'business_rejection', reason);
     return;
   }
 
@@ -133,6 +164,26 @@ export async function runPipeline(env: ReviewEnv, job: ReviewJobPayload): Promis
     uploaderUserId,
   };
 
-  await callbackWorker(env, { status: 'done', submissionId, plugin });
+  await callbackWorker(env, {
+    status: 'done',
+    submissionId,
+    deliveryAttempt: job.deliveryAttempt,
+    callbackKey: callbackKey(job, 'done'),
+    plugin,
+  });
   console.log(`[pipeline] #${submissionId} 审核完成，插件 slug=${slug}`);
+}
+
+export async function runPipeline(env: ReviewEnv, job: ReviewJobPayload): Promise<void> {
+  try {
+    await executePipeline(env, job);
+  } catch (error) {
+    const reviewError = toReviewError(error);
+    if (reviewError.kind === 'business') {
+      await reject(env, job, reviewError.code as 'business_rejection' | 'github_not_found', reviewError.message);
+      return;
+    }
+    if (reviewError.code === 'callback_error') throw reviewError;
+    await fail(env, job, reviewError);
+  }
 }
