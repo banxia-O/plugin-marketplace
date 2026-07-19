@@ -1,0 +1,5 @@
+{
+  "legacy403": { "startSubmissionId": 1000, "count": 31 },
+  "businessRejected": { "startSubmissionId": 2000, "licenseCount": 5, "archivedCount": 1 },
+  "noReviewLog": { "startSubmissionId": 3000, "count": 74 }
+}

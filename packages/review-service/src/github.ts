@@ -1,3 +1,5 @@
+import { classifyGithubResponse, ReviewError, toReviewError } from './errors.js';
+
 /** 允许收录的 SPDX 许可证（宽松型开源许可证） */
 const ALLOWED_LICENSES = new Set([
   'MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause',
@@ -45,6 +47,18 @@ function makeHeaders(token: string): Record<string, string> {
   return h;
 }
 
+async function githubFetch(url: string): Promise<Response>;
+async function githubFetch(url: string, token: string): Promise<Response>;
+async function githubFetch(url: string, token = ''): Promise<Response> {
+  try {
+    return await fetch(url, { headers: makeHeaders(token), signal: AbortSignal.timeout(15_000) });
+  } catch (error) {
+    const classified = toReviewError(error);
+    if (classified.code === 'github_timeout') throw classified;
+    throw new ReviewError('github_server_error', 'GitHub 网络请求失败', true, 'technical');
+  }
+}
+
 /** owner/repo 从 GitHub URL 中提取 */
 export function parseGithubUrl(url: string): { owner: string; repo: string } | null {
   const m = url.match(/github\.com\/([^/]+)\/([^/?#]+?)(?:\.git)?(?:[/?#]|$)/);
@@ -53,11 +67,8 @@ export function parseGithubUrl(url: string): { owner: string; repo: string } | n
 }
 
 export async function fetchRepoMeta(owner: string, repo: string, token: string): Promise<RepoMeta> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-    headers: makeHeaders(token),
-  });
-  if (res.status === 404) throw new Error(`仓库 ${owner}/${repo} 不存在或已设为私有`);
-  if (!res.ok) throw new Error(`GitHub API 返回 ${res.status}`);
+  const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}`, token);
+  if (!res.ok) throw classifyGithubResponse(res);
   const d = (await res.json()) as {
     full_name: string;
     description: string | null;
@@ -98,11 +109,53 @@ export function checkLicense(spdxId: string | null): LicenseCheckResult {
   return { allowed: true };
 }
 
+const ROOT_LICENSE_FILES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'COPYING'] as const;
+
+function decodeGithubContent(value: { content?: string; encoding?: string }): string {
+  if (typeof value.content !== 'string') {
+    throw new ReviewError('review_internal_error', 'GitHub license response is missing content', true, 'technical');
+  }
+  return value.encoding === 'base64' ? Buffer.from(value.content, 'base64').toString('utf-8') : value.content;
+}
+
+function detectSpdxFromLicenseText(content: string): string | null {
+  const text = content.toLowerCase().replace(/\s+/g, ' ');
+  if (text.includes('apache license') && text.includes('version 2.0')) return 'Apache-2.0';
+  if (text.includes('permission is hereby granted, free of charge, to any person obtaining a copy')) return 'MIT';
+  if (text.includes('redistribution and use in source and binary forms')) {
+    return text.includes('neither the name') ? 'BSD-3-Clause' : 'BSD-2-Clause';
+  }
+  if (text.includes('permission to use, copy, modify, and/or distribute this software for any purpose with or without fee')) {
+    return 'ISC';
+  }
+  if (text.includes('this is free and unencumbered software released into the public domain')) return 'Unlicense';
+  if (text.includes('cc0 1.0 universal') || text.includes('creative commons zero')) return 'CC0-1.0';
+  return null;
+}
+
+export async function resolveRepoLicense(
+  spdxId: string | null,
+  owner: string,
+  repo: string,
+  token: string,
+): Promise<string | null> {
+  if (spdxId && spdxId !== 'NOASSERTION') return spdxId;
+  for (const filename of ROOT_LICENSE_FILES) {
+    const path = encodeURIComponent(filename);
+    const response = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, token);
+    if (response.status === 404) continue;
+    if (!response.ok) throw classifyGithubResponse(response);
+    const body = (await response.json()) as { content?: string; encoding?: string };
+    const detected = detectSpdxFromLicenseText(decodeGithubContent(body));
+    if (detected) return detected;
+  }
+  return null;
+}
+
 export async function fetchReadme(owner: string, repo: string, token: string): Promise<ReadmeResult> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, {
-    headers: makeHeaders(token),
-  });
-  if (!res.ok) return { content: '', adequate: false };
+  const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/readme`, token);
+  if (res.status === 404) return { content: '', adequate: false };
+  if (!res.ok) throw classifyGithubResponse(res);
   const d = (await res.json()) as { content: string; encoding: string };
   const raw = d.encoding === 'base64' ? Buffer.from(d.content, 'base64').toString('utf-8') : d.content;
   const adequate = raw.length >= 200 && /^#{1,3} /m.test(raw);
@@ -111,10 +164,9 @@ export async function fetchReadme(owner: string, repo: string, token: string): P
 
 /** 检查仓库根目录是否存在 agent.md，存在则返回文本内容 */
 export async function fetchAgentMd(owner: string, repo: string, token: string): Promise<string | null> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/agent.md`, {
-    headers: makeHeaders(token),
-  });
-  if (!res.ok) return null;
+  const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/contents/agent.md`, token);
+  if (res.status === 404) return null;
+  if (!res.ok) throw classifyGithubResponse(res);
   const d = (await res.json()) as { content?: string; encoding?: string };
   if (!d.content) return null;
   return d.encoding === 'base64' ? Buffer.from(d.content, 'base64').toString('utf-8') : d.content;
@@ -122,10 +174,9 @@ export async function fetchAgentMd(owner: string, repo: string, token: string): 
 
 /** 获取 package.json 前 2000 字符用于安全扫描 */
 export async function fetchPackageJson(owner: string, repo: string, token: string): Promise<string> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/package.json`, {
-    headers: makeHeaders(token),
-  });
-  if (!res.ok) return '';
+  const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/contents/package.json`, token);
+  if (res.status === 404) return '';
+  if (!res.ok) throw classifyGithubResponse(res);
   const d = (await res.json()) as { content?: string; encoding?: string };
   if (!d.content) return '';
   const text = d.encoding === 'base64' ? Buffer.from(d.content, 'base64').toString('utf-8') : (d.content ?? '');

@@ -7,6 +7,7 @@ import { adminRoutes, submissionRoutes } from './submissions.js';
 import type { AppContext } from './env.js';
 
 import { syncRepoMetadata } from './sync.js';
+import { dispatchDueReviews } from './dispatch.js';
 
 export type { Env } from './env.js';
 
@@ -85,7 +86,11 @@ app.get('/api/plugins/:slug', async (c) => {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: import('./env.js').Env, ctx: ExecutionContext) {
-    ctx.waitUntil(syncRepoMetadata(env));
+  async scheduled(event: ScheduledEvent, env: import('./env.js').Env, ctx: ExecutionContext) {
+    if (event.cron === '0 17 * * *') ctx.waitUntil(syncRepoMetadata(env));
+    ctx.waitUntil(dispatchDueReviews(env.DB, {
+      reviewServiceUrl: env.REVIEW_SERVICE_URL,
+      reviewSecret: env.REVIEW_SERVICE_SECRET,
+    }));
   },
 };

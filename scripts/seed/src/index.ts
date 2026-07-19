@@ -8,14 +8,18 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { DeployMethod } from '@ppx/shared';
+import { readSeedConfig } from './config.js';
 
-const WORKER_URL = process.env['WORKER_URL'] ?? 'http://localhost:8787';
-const SEED_USERNAME = process.env['SEED_USERNAME'] ?? 'seed-bot';
-const SEED_PASSWORD = process.env['SEED_PASSWORD'] ?? 'seed-bot-cold-start-2026';
-const GITHUB_TOKEN = process.env['GITHUB_TOKEN'] ?? '';
-const MIN_STARS = Number(process.env['MIN_STARS'] ?? 50);
-const MAX_AGE_MONTHS = Number(process.env['MAX_AGE_MONTHS'] ?? 3);
-const DRY_RUN = process.env['DRY_RUN'] === '1';
+const config = readSeedConfig(process.env);
+const {
+  workerUrl: WORKER_URL,
+  seedUsername: SEED_USERNAME,
+  seedPassword: SEED_PASSWORD,
+  githubToken: GITHUB_TOKEN,
+  minStars: MIN_STARS,
+  maxAgeMonths: MAX_AGE_MONTHS,
+  dryRun: DRY_RUN,
+} = config;
 
 const ALLOWED_LICENSES = new Set([
   'MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'Unlicense', 'CC0-1.0', '0BSD',

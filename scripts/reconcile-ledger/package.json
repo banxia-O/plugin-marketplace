@@ -1,5 +1,5 @@
 {
-  "name": "@ppx/seed",
+  "name": "@ppx/reconcile-ledger",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,9 +7,6 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@ppx/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

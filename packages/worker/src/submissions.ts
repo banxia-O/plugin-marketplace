@@ -1,17 +1,43 @@
 import { Hono } from 'hono';
 import { ReviewResultPayload, SubmissionRequest } from '@ppx/shared';
-import type { ReviewJobPayload } from '@ppx/shared';
 import type { AppContext } from './env.js';
 import { authMiddleware } from './auth.js';
 import {
+  ActiveSubmissionConflictError,
+  completeSubmissionWithPlugin,
   findSubmissionById,
-  insertPluginFromReview,
+  IdempotencyConflictError,
   insertSubmission,
-  isDuplicateRepo,
-  updateSubmissionStatus,
+  isPublishedRepo,
+  transitionSubmissionStatus,
 } from './db.js';
+import { createD1DispatchRepository, dispatchReviewJob } from './dispatch.js';
+import { planReviewCallback } from './review-callback.js';
+import {
+  createSubmissionIdempotencyKey,
+  scopeClientIdempotencyKey,
+  toStoredReviewJob,
+} from './submission-service.js';
 
 export const submissionRoutes = new Hono<AppContext>();
+
+async function persistCallbackTransition(
+  db: D1Database,
+  submissionId: number,
+  from: Parameters<typeof transitionSubmissionStatus>[2],
+  to: Parameters<typeof transitionSubmissionStatus>[3],
+  callbackAttempt: number,
+  input: Parameters<typeof transitionSubmissionStatus>[4],
+): Promise<boolean> {
+  const changed = await transitionSubmissionStatus(db, submissionId, from, to, {
+    ...input,
+    callbackAttempt,
+  });
+  if (changed) return false;
+  const current = await findSubmissionById(db, submissionId);
+  if (current?.status === to && (current.last_callback_attempt ?? 0) >= callbackAttempt) return true;
+  throw new Error(`Submission callback state conflict: submission=${submissionId} attempt=${callbackAttempt}`);
+}
 
 /** POST /api/submissions — 登录用户提交插件上架申请 */
 submissionRoutes.post('/', authMiddleware, async (c) => {
@@ -21,35 +47,56 @@ submissionRoutes.post('/', authMiddleware, async (c) => {
   }
   const { repoUrl, name, oneLiner, subcategoryIds, deployMethod, originalAuthor } = parsed.data;
   const uploaderUserId = c.get('userId');
+  const clientKey = c.req.header('idempotency-key')?.trim();
+  const idempotencyKey = clientKey
+    ? await scopeClientIdempotencyKey(uploaderUserId, clientKey)
+    : await createSubmissionIdempotencyKey(uploaderUserId, parsed.data);
 
-  if (await isDuplicateRepo(c.env.DB, repoUrl)) {
+  const payload = toStoredReviewJob(
+    { repoUrl, name, oneLiner, subcategoryIds, deployMethod, originalAuthor },
+    uploaderUserId,
+    idempotencyKey,
+  );
+  if (await isPublishedRepo(c.env.DB, payload.repoUrl)) {
     return c.json({ error: 'conflict', message: '该仓库已在平台上架或正在审核中' }, 409);
   }
 
-  const { id: submissionId } = await insertSubmission(c.env.DB, { repoUrl, uploaderUserId });
+  let result;
+  try {
+    result = await insertSubmission(c.env.DB, {
+      repoUrl: payload.repoUrl,
+      uploaderUserId,
+      idempotencyKey,
+      payload,
+      correlationId: c.req.header('x-correlation-id'),
+    });
+  } catch (error) {
+    if (error instanceof IdempotencyConflictError) {
+      return c.json({ error: 'idempotency_conflict', message: error.message }, 409);
+    }
+    if (error instanceof ActiveSubmissionConflictError) {
+      return c.json({ error: 'conflict', message: error.message }, 409);
+    }
+    throw error;
+  }
+  const submissionId = result.submission.id;
+
+  if (!result.created) {
+    return c.json({ submissionId, status: result.submission.status, deduplicated: true }, 202);
+  }
 
   if (c.env.REVIEW_SERVICE_URL) {
-    const job: ReviewJobPayload = {
-      submissionId,
-      repoUrl,
-      name,
-      oneLiner,
-      subcategoryIds,
-      deployMethod,
-      originalAuthor: originalAuthor ?? '',
-      uploaderUserId,
-    };
     const execCtx = c.executionCtx;
     execCtx?.waitUntil(
-      fetch(`${c.env.REVIEW_SERVICE_URL}/review`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-review-secret': c.env.REVIEW_SERVICE_SECRET },
-        body: JSON.stringify(job),
-      }).catch((err) => console.error('[submissions] review service unreachable:', err)),
+      dispatchReviewJob(submissionId, {
+        repository: createD1DispatchRepository(c.env.DB),
+        reviewServiceUrl: c.env.REVIEW_SERVICE_URL,
+        reviewSecret: c.env.REVIEW_SERVICE_SECRET,
+      }).catch((error) => console.error('[submissions] dispatch failed', { submissionId, error: error instanceof Error ? error.message : 'unknown' })),
     );
   }
 
-  return c.json({ submissionId, status: 'queued' }, 202);
+  return c.json({ submissionId, status: result.submission.status, deduplicated: !result.created }, 202);
 });
 
 /** GET /api/submissions/:id — 查询自己的提交状态 */
@@ -88,16 +135,58 @@ adminRoutes.post('/review-result', async (c) => {
   }
   const result = parsed.data;
 
-  if (result.status === 'rejected') {
-    await updateSubmissionStatus(c.env.DB, result.submissionId, 'rejected', result.rejectReason);
-    return c.json({ ok: true });
+  const submission = await findSubmissionById(c.env.DB, result.submissionId);
+  if (!submission) return c.json({ error: 'not_found', message: '提交记录不存在' }, 404);
+
+  const decision = planReviewCallback(
+    {
+      status: submission.status,
+      attemptCount: submission.attempt_count,
+      maxAttempts: submission.max_attempts,
+      lastCallbackAttempt: submission.last_callback_attempt,
+    },
+    {
+      status: result.status,
+      deliveryAttempt: result.deliveryAttempt,
+      retryable: result.status === 'failed' ? result.retryable : undefined,
+      retryAfterMs: result.status === 'failed' ? result.retryAfterMs : undefined,
+    },
+  );
+  if (decision.action === 'ignore') {
+    return c.json({ ok: true, deduplicated: true, reason: decision.reason });
   }
 
-  try {
-    await insertPluginFromReview(c.env.DB, result.plugin);
-    await updateSubmissionStatus(c.env.DB, result.submissionId, 'done');
-  } catch {
-    await updateSubmissionStatus(c.env.DB, result.submissionId, 'rejected', '插件入库失败（可能存在重复数据）');
+  if (result.status === 'done') {
+    const completion = await completeSubmissionWithPlugin(c.env.DB, submission, result.plugin, result.deliveryAttempt);
+    return c.json({ ok: true, deduplicated: completion.deduplicated });
   }
-  return c.json({ ok: true });
+
+  if (result.status === 'rejected') {
+    const deduplicated = await persistCallbackTransition(
+      c.env.DB,
+      result.submissionId,
+      submission.status,
+      'rejected',
+      result.deliveryAttempt,
+      {
+        rejectReason: result.rejectReason,
+        errorCode: result.reasonCode,
+      },
+    );
+    return c.json({ ok: true, deduplicated });
+  }
+
+  const deduplicated = await persistCallbackTransition(
+    c.env.DB,
+    result.submissionId,
+    submission.status,
+    decision.status,
+    result.deliveryAttempt,
+    {
+      errorCode: result.errorCode,
+      errorMessage: result.errorMessage,
+      nextAttemptAt: decision.status === 'retry_wait' && 'nextAttemptAt' in decision ? decision.nextAttemptAt : null,
+    },
+  );
+  return c.json({ ok: true, deduplicated });
 });

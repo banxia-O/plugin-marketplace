@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "build": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "deploy": "wrangler deploy",
     "seed:gen": "node scripts/gen-seed.mjs",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",
     "@types/bcryptjs": "^2.4.6",
+    "miniflare": "3.20250718.3",
     "typescript": "^5.7.3",
     "wrangler": "^3.99.0"
   }

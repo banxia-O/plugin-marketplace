@@ -12,9 +12,10 @@ export const SubmissionRequest = z.object({
 });
 export type SubmissionRequest = z.infer<typeof SubmissionRequest>;
 
-/** Worker 发给审核服务的任务载荷 */
-export type ReviewJobPayload = {
-  submissionId: number;
+/** Worker 持久化的版本化审核任务载荷（派发时再补 submissionId/attempt）。 */
+export type StoredReviewJobPayload = {
+  payloadVersion: 1;
+  idempotencyKey: string;
   repoUrl: string;
   name: string;
   oneLiner: string;
@@ -23,6 +24,24 @@ export type ReviewJobPayload = {
   originalAuthor: string;
   uploaderUserId: number;
 };
+
+/** Worker 发给审核服务的任务载荷。 */
+export type ReviewJobPayload = StoredReviewJobPayload & {
+  submissionId: number;
+  deliveryAttempt: number;
+};
+
+export const ReviewTechnicalErrorCode = z.enum([
+  'github_auth_error',
+  'github_primary_rate_limit',
+  'github_secondary_rate_limit',
+  'github_server_error',
+  'github_timeout',
+  'model_error',
+  'callback_error',
+  'review_internal_error',
+]);
+export type ReviewTechnicalErrorCode = z.infer<typeof ReviewTechnicalErrorCode>;
 
 /** 审核通过时，审核服务回写给 Worker 的插件数据 */
 export const ReviewPluginData = z.object({
@@ -48,8 +67,31 @@ export type ReviewPluginData = z.infer<typeof ReviewPluginData>;
 
 /** 审核服务回写 Worker admin 接口的完整结果（鉴别联合） */
 export const ReviewResultPayload = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('done'), submissionId: z.number().int(), plugin: ReviewPluginData }),
-  z.object({ status: z.literal('rejected'), submissionId: z.number().int(), rejectReason: z.string() }),
+  z.object({
+    status: z.literal('done'),
+    submissionId: z.number().int(),
+    deliveryAttempt: z.number().int().positive(),
+    callbackKey: z.string().min(1),
+    plugin: ReviewPluginData,
+  }),
+  z.object({
+    status: z.literal('rejected'),
+    submissionId: z.number().int(),
+    deliveryAttempt: z.number().int().positive(),
+    callbackKey: z.string().min(1),
+    reasonCode: z.enum(['business_rejection', 'github_not_found']),
+    rejectReason: z.string(),
+  }),
+  z.object({
+    status: z.literal('failed'),
+    submissionId: z.number().int(),
+    deliveryAttempt: z.number().int().positive(),
+    callbackKey: z.string().min(1),
+    errorCode: ReviewTechnicalErrorCode,
+    errorMessage: z.string(),
+    retryable: z.boolean(),
+    retryAfterMs: z.number().int().nonnegative().optional(),
+  }),
 ]);
 export type ReviewResultPayload = z.infer<typeof ReviewResultPayload>;
 
@@ -57,7 +99,7 @@ export type ReviewResultPayload = z.infer<typeof ReviewResultPayload>;
 export const SubmissionStatus = z.object({
   id: z.number().int(),
   repoUrl: z.string(),
-  status: z.enum(['queued', 'processing', 'done', 'rejected']),
+  status: z.enum(['queued', 'dispatching', 'processing', 'retry_wait', 'done', 'rejected', 'failed', 'dead_letter']),
   rejectReason: z.string().nullable(),
   createdAt: z.string(),
 });

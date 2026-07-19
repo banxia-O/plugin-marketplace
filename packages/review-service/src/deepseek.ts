@@ -1,3 +1,5 @@
+import { ReviewError } from './errors.js';
+
 /** DeepSeek API（OpenAI 兼容）薄封装 */
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
@@ -13,14 +15,20 @@ interface CompletionResponse {
 }
 
 async function chat(apiKey: string, messages: ChatMessage[], maxTokens = 2048, temp = 0.3): Promise<string> {
-  const res = await fetch(DEEPSEEK_API_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: DEEPSEEK_MODEL, messages, max_tokens: maxTokens, temperature: temp }),
-  });
-  if (!res.ok) throw new Error(`DeepSeek API 返回 ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as CompletionResponse;
-  return data.choices[0]?.message.content ?? '';
+  try {
+    const res = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: DEEPSEEK_MODEL, messages, max_tokens: maxTokens, temperature: temp }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) throw new ReviewError('model_error', `DeepSeek API 返回 ${res.status}`, true, 'technical');
+    const data = (await res.json()) as CompletionResponse;
+    return data.choices[0]?.message.content ?? '';
+  } catch (error) {
+    if (error instanceof ReviewError) throw error;
+    throw new ReviewError('model_error', 'DeepSeek 请求或响应失败', true, 'technical');
+  }
 }
 
 export interface SecurityScanResult {
@@ -52,14 +60,13 @@ export async function securityScan(
     },
   ];
 
+  const raw = await chat(apiKey, messages, 512, 0.1);
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) throw new ReviewError('model_error', 'DeepSeek 安全扫描返回格式无效', true, 'technical');
   try {
-    const raw = await chat(apiKey, messages, 512, 0.1);
-    const json = raw.match(/\{[\s\S]*\}/)?.[0];
-    if (!json) return { safe: true, concerns: [] };
     return JSON.parse(json) as SecurityScanResult;
   } catch {
-    // LLM 失败时默认放行，不因工具故障误拒
-    return { safe: true, concerns: [] };
+    throw new ReviewError('model_error', 'DeepSeek 安全扫描返回 JSON 无效', true, 'technical');
   }
 }
 
