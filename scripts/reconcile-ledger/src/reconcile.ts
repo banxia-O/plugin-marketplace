@@ -2,6 +2,8 @@ export type Classification =
   | 'live'
   | 'ledger_stale'
   | 'never_dispatched'
+  | 'no_review_log'
+  | 'github_403_legacy'
   | 'github_rate_limit'
   | 'business_rejected'
   | 'processing_or_unknown'
@@ -32,6 +34,11 @@ export interface D1SubmissionSnapshot {
 }
 
 export interface LogSignal {
+  seen?: boolean;
+  started?: boolean;
+  completed?: boolean;
+  rejected?: boolean;
+  github403Legacy?: boolean;
   githubRateLimit?: boolean;
   businessRejected?: boolean;
 }
@@ -130,6 +137,7 @@ export interface ReconcileInput {
   liveRepoUrls: Set<string>;
   d1BySubmissionId: Map<number, D1SubmissionSnapshot>;
   logSignals: Map<number, LogSignal>;
+  logEvidenceProvided: boolean;
 }
 
 export interface ReconciledRow extends LedgerRecord {
@@ -140,7 +148,12 @@ export interface ReconciledRow extends LedgerRecord {
 export interface ReconciliationReport {
   generatedAt: string;
   readOnly: true;
-  summary: Record<Classification, number>;
+  summary: {
+    rowCount: Record<Classification, number>;
+    uniqueRepoCount: Record<Classification, number>;
+    totalRows: number;
+    totalUniqueRepos: number;
+  };
   rows: ReconciledRow[];
   replayCandidates: Array<{ repoUrl: string; submissionId?: number; classification: Classification }>;
 }
@@ -157,47 +170,84 @@ function classify(record: LedgerRecord, input: ReconcileInput): { classification
 
   const signal = record.submissionId === undefined ? undefined : input.logSignals.get(record.submissionId);
   const d1 = record.submissionId === undefined ? undefined : input.d1BySubmissionId.get(record.submissionId);
+  const baseEvidence = [
+    'public_api=missing',
+    `log_seen=${signal?.seen === true}`,
+    `log_started=${signal?.started === true}`,
+    `log_completed=${signal?.completed === true}`,
+    `log_rejected=${signal?.rejected === true}`,
+    `d1_status=${d1?.status ?? 'unavailable'}`,
+  ];
+  if (signal?.github403Legacy) {
+    return { classification: 'github_403_legacy', evidence: [...baseEvidence, 'legacy_github_403=true'] };
+  }
   if (signal?.githubRateLimit || d1?.last_error_code?.includes('rate_limit')) {
-    return { classification: 'github_rate_limit', evidence: ['public_api=missing', 'rate_limit_evidence=true'] };
+    return { classification: 'github_rate_limit', evidence: [...baseEvidence, 'rate_limit_evidence=true'] };
   }
-  if (signal?.businessRejected || d1?.status === 'rejected' || record.status === 'rejected') {
-    return { classification: 'business_rejected', evidence: ['public_api=missing', 'business_rejection_evidence=true'] };
+  const typedBusinessRejection = ['business_rejection', 'github_not_found'].includes(d1?.last_error_code ?? '');
+  if (signal?.businessRejected || typedBusinessRejection) {
+    return { classification: 'business_rejected', evidence: [...baseEvidence, 'business_rejection_evidence=true'] };
   }
-  if (d1?.status === 'done') {
-    return { classification: 'done_but_not_visible', evidence: ['public_api=missing', 'd1_status=done'] };
+  if (d1?.status === 'done' || signal?.completed) {
+    return { classification: 'done_but_not_visible', evidence: [...baseEvidence, 'completion_evidence=true'] };
   }
   if (record.submissionId === undefined) {
     return { classification: 'never_dispatched', evidence: ['public_api=missing', 'submission_id=missing'] };
   }
+  if (input.logEvidenceProvided && !signal?.seen) {
+    return { classification: 'no_review_log', evidence: [...baseEvidence, 'full_log_has_no_submission=true'] };
+  }
   return {
     classification: 'processing_or_unknown',
-    evidence: ['public_api=missing', `d1_status=${d1?.status ?? 'unavailable'}`],
+    evidence: baseEvidence,
   };
 }
 
-export function buildReport(input: ReconcileInput): ReconciliationReport {
-  const summary: Record<Classification, number> = {
+function emptyCounts(): Record<Classification, number> {
+  return {
     live: 0,
     ledger_stale: 0,
     never_dispatched: 0,
+    no_review_log: 0,
+    github_403_legacy: 0,
     github_rate_limit: 0,
     business_rejected: 0,
     processing_or_unknown: 0,
     done_but_not_visible: 0,
   };
+}
+
+export function buildReport(input: ReconcileInput): ReconciliationReport {
+  const rowCount = emptyCounts();
+  const uniqueRepoCount = emptyCounts();
   const rows = input.ledger.map((record) => {
     const result = classify(record, input);
-    summary[result.classification] += 1;
+    rowCount[result.classification] += 1;
     return { ...record, ...result };
   });
-  const replayable = new Set<Classification>(['never_dispatched', 'github_rate_limit', 'done_but_not_visible']);
-  const replayCandidates = rows
+  const uniqueRows = new Map<string, ReconciledRow>();
+  for (const row of rows) if (!uniqueRows.has(row.normalizedRepoUrl)) uniqueRows.set(row.normalizedRepoUrl, row);
+  for (const row of uniqueRows.values()) uniqueRepoCount[row.classification] += 1;
+
+  const replayable = new Set<Classification>([
+    'never_dispatched',
+    'no_review_log',
+    'github_403_legacy',
+    'github_rate_limit',
+  ]);
+  const replayCandidates = [...uniqueRows.values()]
     .filter((row) => replayable.has(row.classification))
     .map((row) => ({
       repoUrl: row.normalizedRepoUrl,
       ...(row.submissionId === undefined ? {} : { submissionId: row.submissionId }),
       classification: row.classification,
     }));
+  const summary = {
+    rowCount,
+    uniqueRepoCount,
+    totalRows: rows.length,
+    totalUniqueRepos: uniqueRows.size,
+  };
   return { generatedAt: new Date().toISOString(), readOnly: true, summary, rows, replayCandidates };
 }
 
@@ -226,11 +276,23 @@ export function parseLogSignals(content: string): Map<number, LogSignal> {
     if (!idMatch?.[1]) continue;
     const id = Number(idMatch[1]);
     const current = signals.get(id) ?? {};
-    if (/rate.?limit|HTTP\s*(403|429)|速率限制/i.test(line)) current.githubRateLimit = true;
-    if (/business_rejection|许可证|私有仓库|已归档|安全扫描未通过/i.test(line)) current.businessRejected = true;
+    current.seen = true;
+    if (/开始审核|\bstart(?:ed|ing)?\b/i.test(line)) current.started = true;
+    if (/审核完成|\bcompleted?\b/i.test(line)) current.completed = true;
+    if (/拒绝|\brejected?\b/i.test(line)) current.rejected = true;
+    const legacy403 = /GitHub API\s*返回\s*403/i.test(line);
+    if (legacy403) current.github403Legacy = true;
+    if (!legacy403 && /rate.?limit|HTTP\s*429|速率限制/i.test(line)) current.githubRateLimit = true;
+    if (!legacy403 && /business_rejection|github_not_found|许可证|私有仓库|已归档|安全扫描未通过|license|private repository|archived|security scan/i.test(line)) {
+      current.businessRejected = true;
+    }
     signals.set(id, current);
   }
   return signals;
+}
+
+function markdownCell(value: unknown): string {
+  return String(value ?? '').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
 }
 
 export function reportToMarkdown(report: ReconciliationReport, diagnostics: ParsedLedger): string {
@@ -243,9 +305,14 @@ export function reportToMarkdown(report: ReconciliationReport, diagnostics: Pars
     '',
     '## Summary',
     '',
-    '| Classification | Count |',
-    '|---|---:|',
-    ...Object.entries(report.summary).map(([key, count]) => `| ${key} | ${count} |`),
+    `- Total rows: ${report.summary.totalRows}`,
+    `- Total unique repositories: ${report.summary.totalUniqueRepos}`,
+    '',
+    '| Classification | Rows | Unique repositories |',
+    '|---|---:|---:|',
+    ...Object.entries(report.summary.rowCount).map(
+      ([key, count]) => `| ${key} | ${count} | ${report.summary.uniqueRepoCount[key as Classification]} |`,
+    ),
     '',
     '## Input diagnostics',
     '',
@@ -253,6 +320,14 @@ export function reportToMarkdown(report: ReconciliationReport, diagnostics: Pars
     `- Duplicate normalized repositories: ${diagnostics.duplicates.length}`,
     `- Conflicting duplicate repositories: ${diagnostics.conflicts.length}`,
     `- Replay candidates (report only): ${report.replayCandidates.length}`,
+    '',
+    '## Details',
+    '',
+    '| Line | Classification | Repository | Submission | Ledger status | Evidence |',
+    '|---:|---|---|---:|---|---|',
+    ...report.rows.map((row) =>
+      `| ${row.line} | ${row.classification} | ${markdownCell(row.normalizedRepoUrl)} | ${row.submissionId ?? ''} | ${markdownCell(row.status ?? '')} | ${markdownCell(row.evidence.join('; '))} |`,
+    ),
     '',
   ];
   return lines.join('\n');

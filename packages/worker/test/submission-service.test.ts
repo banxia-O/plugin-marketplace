@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSubmissionIdempotencyKey, persistIdempotentSubmission } from '../src/submission-service.js';
+import { createSubmissionIdempotencyKey, persistIdempotentSubmission, toStoredReviewJob } from '../src/submission-service.js';
 
 describe('submission idempotency', () => {
   it('normalizes equivalent GitHub URLs into the same key', async () => {
@@ -36,5 +36,23 @@ describe('submission idempotency', () => {
     const duplicate = await persistIdempotentSubmission(repository, 'same-key');
     expect(first).toEqual({ submission: { id: 41, status: 'queued' }, created: true });
     expect(duplicate).toEqual({ submission: { id: 41, status: 'queued' }, created: false });
+  });
+
+  it('stores the same canonical payload used to derive automatic idempotency keys', () => {
+    const payload = toStoredReviewJob({
+      repoUrl: 'https://GitHub.com/OpenAI/example.git/',
+      name: ' Example ',
+      oneLiner: ' Description ',
+      subcategoryIds: [2, 1],
+      deployMethod: 'remote',
+      originalAuthor: ' Author ',
+    }, 7, 'key');
+    expect(payload).toMatchObject({
+      repoUrl: 'https://github.com/openai/example',
+      name: 'Example',
+      oneLiner: 'Description',
+      subcategoryIds: [1, 2],
+      originalAuthor: 'Author',
+    });
   });
 });

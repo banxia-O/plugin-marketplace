@@ -1,9 +1,12 @@
 import type { ReviewJobPayload, StoredReviewJobPayload } from '@ppx/shared';
 import { assertSubmissionTransition } from './submission-state.js';
 import type { SubmissionStatus } from './submission-state.js';
+import { calculateRetryDelayMs } from './retry-policy.js';
 
+export { calculateRetryDelayMs } from './retry-policy.js';
+
+const DISPATCH_LEASE_MINUTES = 2;
 const PROCESSING_LEASE_MINUTES = 15;
-const MAX_RETRY_DELAY_MS = 6 * 60 * 60 * 1000;
 
 export interface DispatchSubmission {
   id: number;
@@ -17,34 +20,7 @@ export interface DispatchRepository {
   claim(id: number): Promise<DispatchSubmission | null>;
   markProcessing(id: number, attempt: number): Promise<void>;
   markRetry(id: number, attempt: number, code: string, message: string, nextAttemptAt: string): Promise<void>;
-  markFailed(id: number, status: 'failed' | 'dead_letter', code: string, message: string): Promise<void>;
-}
-
-interface RetryDelayInput {
-  attempt: number;
-  retryAfter?: string | null;
-  rateLimitReset?: string | null;
-  nowMs?: number;
-  random?: () => number;
-}
-
-export function calculateRetryDelayMs(input: RetryDelayInput): number {
-  const nowMs = input.nowMs ?? Date.now();
-  if (input.retryAfter) {
-    const seconds = Number(input.retryAfter);
-    if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, MAX_RETRY_DELAY_MS);
-    const dateMs = Date.parse(input.retryAfter);
-    if (Number.isFinite(dateMs)) return Math.min(Math.max(0, dateMs - nowMs), MAX_RETRY_DELAY_MS);
-  }
-  if (input.rateLimitReset) {
-    const resetMs = Number(input.rateLimitReset) * 1000;
-    if (Number.isFinite(resetMs) && resetMs > nowMs) {
-      return Math.min(resetMs - nowMs, MAX_RETRY_DELAY_MS);
-    }
-  }
-  const base = Math.min(10_000 * 2 ** Math.max(0, input.attempt - 1), MAX_RETRY_DELAY_MS);
-  const jitter = 0.5 + (input.random ?? Math.random)();
-  return Math.min(Math.round(base * jitter), MAX_RETRY_DELAY_MS);
+  markFailed(id: number, attempt: number, status: 'failed' | 'dead_letter', code: string, message: string): Promise<void>;
 }
 
 function sanitizeMessage(value: string): string {
@@ -107,7 +83,7 @@ export async function dispatchReviewJob(id: number, dependencies: DispatchDepend
   const classification = classifyDispatchResponse(response);
   const body = sanitizeMessage(await response.text().catch(() => ''));
   if (!classification.retryable) {
-    await dependencies.repository.markFailed(claimed.id, 'failed', classification.code, `HTTP ${response.status}: ${body}`);
+    await dependencies.repository.markFailed(claimed.id, claimed.attemptCount, 'failed', classification.code, `HTTP ${response.status}: ${body}`);
     return;
   }
   await handleDispatchFailure(
@@ -128,7 +104,7 @@ async function handleDispatchFailure(
 ): Promise<void> {
   const cleanMessage = sanitizeMessage(message);
   if (claimed.attemptCount >= claimed.maxAttempts) {
-    await dependencies.repository.markFailed(claimed.id, 'dead_letter', code, cleanMessage);
+    await dependencies.repository.markFailed(claimed.id, claimed.attemptCount, 'dead_letter', code, cleanMessage);
     return;
   }
   const nowMs = (dependencies.now ?? Date.now)();
@@ -154,6 +130,11 @@ interface DispatchRow {
   attempt_count: number;
   max_attempts: number;
   job_payload_json: string;
+  next_attempt_at: string | null;
+}
+
+function requireSingleChange(changes: number | undefined, operation: string, id: number, attempt: number): void {
+  if ((changes ?? 0) !== 1) throw new Error(`Dispatch state conflict during ${operation}: submission=${id} attempt=${attempt}`);
 }
 
 function parseStoredPayload(value: string): StoredReviewJobPayload | null {
@@ -177,21 +158,23 @@ function parseStoredPayload(value: string): StoredReviewJobPayload | null {
 export function createD1DispatchRepository(db: D1Database): DispatchRepository {
   return {
     async claim(id) {
-      const current = await db.prepare('SELECT id, status, attempt_count, max_attempts, job_payload_json FROM submissions WHERE id = ?').bind(id).first<DispatchRow>();
-      if (!current || !['queued', 'retry_wait', 'processing'].includes(current.status)) return null;
+      const current = await db.prepare('SELECT id, status, attempt_count, max_attempts, job_payload_json, next_attempt_at FROM submissions WHERE id = ?').bind(id).first<DispatchRow>();
+      if (!current || !['queued', 'retry_wait', 'processing', 'dispatching'].includes(current.status)) return null;
       const payload = parseStoredPayload(current.job_payload_json);
       if (!payload) {
         assertSubmissionTransition(current.status, 'failed');
         await db
-          .prepare("UPDATE submissions SET status = 'failed', last_error_code = 'invalid_job_payload', last_error_message = 'Stored review payload is invalid', completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = ?")
+          .prepare("UPDATE submissions SET status = 'failed', active_repo_key = NULL, last_error_code = 'invalid_job_payload', last_error_message = 'Stored review payload is invalid', completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = ?")
           .bind(id, current.status)
           .run();
         return null;
       }
       assertSubmissionTransition(current.status, 'dispatching');
       const result = await db
-        .prepare("UPDATE submissions SET status = 'dispatching', attempt_count = attempt_count + 1, updated_at = datetime('now') WHERE id = ? AND status = ? AND attempt_count < max_attempts")
-        .bind(id, current.status)
+        .prepare(`UPDATE submissions SET status = 'dispatching', attempt_count = attempt_count + 1, next_attempt_at = datetime('now', '+${DISPATCH_LEASE_MINUTES} minutes'), updated_at = datetime('now')
+          WHERE id = ? AND status = ? AND attempt_count = ? AND attempt_count < max_attempts
+            AND next_attempt_at IS NOT NULL AND datetime(next_attempt_at) <= datetime('now')`)
+        .bind(id, current.status, current.attempt_count)
         .run();
       if ((result.meta.changes ?? 0) !== 1) return null;
       return {
@@ -204,24 +187,27 @@ export function createD1DispatchRepository(db: D1Database): DispatchRepository {
     },
     async markProcessing(id, attempt) {
       assertSubmissionTransition('dispatching', 'processing');
-      await db
+      const result = await db
         .prepare(`UPDATE submissions SET status = 'processing', processing_started_at = datetime('now'), next_attempt_at = datetime('now', '+${PROCESSING_LEASE_MINUTES} minutes'), updated_at = datetime('now') WHERE id = ? AND status = 'dispatching' AND attempt_count = ?`)
         .bind(id, attempt)
         .run();
+      requireSingleChange(result.meta.changes, 'markProcessing', id, attempt);
     },
     async markRetry(id, attempt, code, message, nextAttemptAt) {
       assertSubmissionTransition('dispatching', 'retry_wait');
-      await db
+      const result = await db
         .prepare("UPDATE submissions SET status = 'retry_wait', last_error_code = ?, last_error_message = ?, next_attempt_at = ?, updated_at = datetime('now') WHERE id = ? AND status = 'dispatching' AND attempt_count = ?")
         .bind(code, message, nextAttemptAt, id, attempt)
         .run();
+      requireSingleChange(result.meta.changes, 'markRetry', id, attempt);
     },
-    async markFailed(id, status, code, message) {
+    async markFailed(id, attempt, status, code, message) {
       assertSubmissionTransition('dispatching', status);
-      await db
-        .prepare("UPDATE submissions SET status = ?, last_error_code = ?, last_error_message = ?, completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = 'dispatching'")
-        .bind(status, code, message, id)
+      const result = await db
+        .prepare("UPDATE submissions SET status = ?, active_repo_key = NULL, last_error_code = ?, last_error_message = ?, next_attempt_at = NULL, completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = 'dispatching' AND attempt_count = ?")
+        .bind(status, code, message, id, attempt)
         .run();
+      requireSingleChange(result.meta.changes, 'markFailed', id, attempt);
     },
   };
 }
@@ -234,7 +220,7 @@ export async function dispatchDueReviews(
   const due = (
     await db
       .prepare(`SELECT id FROM submissions
-        WHERE status IN ('queued', 'retry_wait', 'processing')
+        WHERE status IN ('queued', 'retry_wait', 'processing', 'dispatching')
           AND next_attempt_at IS NOT NULL
           AND datetime(next_attempt_at) <= datetime('now')
           AND attempt_count < max_attempts
@@ -256,13 +242,13 @@ export async function dispatchDueReviews(
 
   const exhausted = (
     await db
-      .prepare(`SELECT id, status FROM submissions WHERE status IN ('retry_wait', 'processing') AND attempt_count >= max_attempts AND next_attempt_at IS NOT NULL AND datetime(next_attempt_at) <= datetime('now')`)
+      .prepare(`SELECT id, status FROM submissions WHERE status IN ('retry_wait', 'processing', 'dispatching') AND attempt_count >= max_attempts AND next_attempt_at IS NOT NULL AND datetime(next_attempt_at) <= datetime('now')`)
       .all<{ id: number; status: SubmissionStatus }>()
   ).results;
   for (const row of exhausted) {
     assertSubmissionTransition(row.status, 'dead_letter');
     await db
-      .prepare("UPDATE submissions SET status = 'dead_letter', last_error_code = COALESCE(last_error_code, 'max_attempts_exhausted'), completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = ?")
+      .prepare("UPDATE submissions SET status = 'dead_letter', active_repo_key = NULL, next_attempt_at = NULL, last_error_code = COALESCE(last_error_code, 'max_attempts_exhausted'), completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = ?")
       .bind(row.id, row.status)
       .run();
   }

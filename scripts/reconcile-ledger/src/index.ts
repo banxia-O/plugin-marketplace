@@ -59,7 +59,13 @@ async function main(): Promise<void> {
     ? parseD1Snapshot(JSON.parse(readFileSync(resolve(options.d1Export), 'utf8')) as unknown)
     : new Map();
   const logSignals = options.logs ? parseLogSignals(readFileSync(resolve(options.logs), 'utf8')) : new Map();
-  const report = buildReport({ ledger: parsed.records, liveRepoUrls, d1BySubmissionId, logSignals });
+  const report = buildReport({
+    ledger: parsed.records,
+    liveRepoUrls,
+    d1BySubmissionId,
+    logSignals,
+    logEvidenceProvided: Boolean(options.logs),
+  });
   writeFileSync(resolve(options.jsonOut), `${JSON.stringify({ ...report, diagnostics: parsed }, null, 2)}\n`, 'utf8');
   writeFileSync(resolve(options.markdownOut), reportToMarkdown(report, parsed), 'utf8');
   console.log(JSON.stringify({ summary: report.summary, diagnostics: {

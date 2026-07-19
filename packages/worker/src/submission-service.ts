@@ -61,11 +61,11 @@ export function toStoredReviewJob(
     payloadVersion: 1,
     idempotencyKey,
     repoUrl: normalizeGithubRepoUrl(input.repoUrl),
-    name: input.name,
-    oneLiner: input.oneLiner,
-    subcategoryIds: input.subcategoryIds,
+    name: input.name.trim(),
+    oneLiner: input.oneLiner.trim(),
+    subcategoryIds: [...input.subcategoryIds].sort((a, b) => a - b),
     deployMethod: input.deployMethod,
-    originalAuthor: input.originalAuthor ?? '',
+    originalAuthor: input.originalAuthor?.trim() ?? '',
     uploaderUserId,
   };
 }

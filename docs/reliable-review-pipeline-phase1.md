@@ -25,11 +25,12 @@ queued -> dispatching -> processing -> done
                   `------> dead_letter
 ```
 
-All transitions are checked centrally. Dispatch claims are conditional, each delivery carries an attempt number, and duplicate or stale callbacks are ignored. Network errors, review-service 401/403/429/5xx responses, GitHub rate limits, timeouts, model failures, and callback failures never become `rejected`.
+All transitions are checked centrally. Dispatch claims use a two-minute lease, processing uses a fifteen-minute lease, and expired leases are reclaimable. Each delivery carries an attempt number, and duplicate or stale callbacks are ignored. Network errors, review-service 401/403/429/5xx responses, GitHub rate limits, timeouts, model failures, and callback failures never become `rejected`.
 
 ## Migration and runtime requirements
 
 - Migration: `packages/worker/migrations/0004_reliable_review_pipeline.sql`
+- Read-only preflight: `packages/worker/preflight/0004_active_repo_conflicts.sql`. The migration must not run while this query returns any row.
 - Cron requirement: `*/5 * * * *` for the D1 outbox drain; the existing `0 17 * * *` metadata sync remains.
 - Worker secrets remain dashboard-managed: `REVIEW_SERVICE_SECRET`, `JWT_SECRET`, and `GITHUB_CLIENT_SECRET`.
 - Review VPS keeps `GITHUB_TOKEN`, `DEEPSEEK_API_KEY`, `WORKER_URL`, and `REVIEW_SERVICE_SECRET` outside the repository.
@@ -40,17 +41,21 @@ All transitions are checked centrally. Dispatch claims are conditional, each del
 
 This PR does not run any of these commands or touch production.
 
+The new review service can emit a `failed` callback that the legacy Worker rejects. The fixture test in `packages/review-service/test/callback-contract.test.ts` locks this incompatibility in place, so this is a maintenance-window rollout, not a zero-downtime rolling deploy.
+
 1. Export/backup the production D1 database and record current Worker and VPS revisions.
-2. Manually disable the current `seed-bot` account/process.
-3. Deploy the review service first. It accepts both legacy and version-1 jobs; extra callback fields are ignored by the legacy Worker.
-4. Apply migration `0004_reliable_review_pipeline.sql` after reviewing the export and row counts.
-5. Deploy the Worker and verify health, one controlled submission, callback state, and the scheduled drain.
-6. Do not replay the 111 historical rows. Run `scripts/reconcile-ledger` only in report mode when evidence is needed.
+2. Start a maintenance window: pause new submission ingress and every automatic review dispatch source, then wait for all legacy in-flight reviews and callbacks to drain.
+3. Manually disable the current `seed-bot` account/process.
+4. Run the read-only `0004_active_repo_conflicts.sql` preflight against production. Resolve and document every returned conflict before continuing; do not apply the migration while conflicts remain.
+5. With submission traffic still paused, deploy the review service.
+6. Apply migration `0004_reliable_review_pipeline.sql`, then deploy the Worker immediately afterward.
+7. Verify Worker and review-service health, the callback contract, one controlled submission, callback state, and the scheduled drain. Resume submission traffic only after both sides are confirmed compatible.
+8. Do not replay the 111 historical rows. Run `scripts/reconcile-ledger` only in report mode when evidence is needed.
 
 ## Rollback
 
-1. Stop new submission traffic and preserve a fresh D1 export.
-2. Roll the Worker back. The new table keeps defaults compatible with legacy inserts; those rows receive no `next_attempt_at` and are not auto-dispatched.
-3. Roll the review service back after the Worker.
+1. Stop new submission traffic and every dispatch source, drain in-flight callbacks, and preserve a fresh D1 export.
+2. Roll the Worker and review service back inside the same maintenance window. Do not allow a new review service to send `failed` callbacks to a legacy Worker.
+3. Keep submission traffic paused until the two rolled-back components have passed their legacy callback checks.
 4. If a full schema rollback is required, use the retained `submissions_legacy_phase1` table only from a reviewed maintenance-window migration. Do not drop the Phase 1 table; retain it for reconciliation.
 5. Never use rollback as a reason to bulk replay ledger rows.

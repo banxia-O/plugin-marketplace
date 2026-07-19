@@ -13,7 +13,7 @@ export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
 
 const ALLOWED_TRANSITIONS: Record<SubmissionStatus, ReadonlySet<SubmissionStatus>> = {
   queued: new Set(['dispatching', 'failed']),
-  dispatching: new Set(['processing', 'retry_wait', 'done', 'rejected', 'failed', 'dead_letter']),
+  dispatching: new Set(['dispatching', 'processing', 'retry_wait', 'done', 'rejected', 'failed', 'dead_letter']),
   processing: new Set(['dispatching', 'retry_wait', 'done', 'rejected', 'failed', 'dead_letter']),
   retry_wait: new Set(['dispatching', 'failed', 'dead_letter']),
   done: new Set(),
@@ -30,14 +30,14 @@ export function assertSubmissionTransition(from: SubmissionStatus, to: Submissio
 
 type CallbackStatus = 'done' | 'rejected' | 'failed';
 
-interface CallbackState {
+export interface CallbackState {
   status: SubmissionStatus;
   attemptCount: number;
   maxAttempts: number;
   lastCallbackAttempt: number | null;
 }
 
-interface CallbackEvent {
+export interface CallbackEvent {
   status: CallbackStatus;
   deliveryAttempt: number;
   retryable?: boolean;

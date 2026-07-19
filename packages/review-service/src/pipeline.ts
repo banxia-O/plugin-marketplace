@@ -7,6 +7,7 @@ import {
   fetchReadme,
   fetchRepoMeta,
   parseGithubUrl,
+  resolveRepoLicense,
 } from './github.js';
 import type { ReviewEnv } from './env.js';
 import { ReviewError, toReviewError } from './errors.js';
@@ -98,7 +99,8 @@ async function executePipeline(env: ReviewEnv, job: ReviewJobPayload): Promise<v
   }
 
   // Step 2: 许可证闸门
-  const licenseCheck = checkLicense(meta.license);
+  const resolvedLicense = await resolveRepoLicense(meta.license, owner, repo, env.GITHUB_TOKEN);
+  const licenseCheck = checkLicense(resolvedLicense);
   if (!licenseCheck.allowed) {
     await reject(env, job, 'business_rejection', licenseCheck.reason ?? '许可证不符合收录条件');
     return;
@@ -154,7 +156,7 @@ async function executePipeline(env: ReviewEnv, job: ReviewJobPayload): Promise<v
     agentMdStatus,
     deployMethod: deployMethod as ReviewPluginData['deployMethod'],
     supportedPlatforms: [],  // Phase 5 手动补充或二期检测
-    license: meta.license ?? '未知',
+    license: resolvedLicense ?? '未知',
     originalAuthor: originalAuthor || owner,
     originalAuthorUrl: `https://github.com/${owner}`,
     stars: meta.stars,

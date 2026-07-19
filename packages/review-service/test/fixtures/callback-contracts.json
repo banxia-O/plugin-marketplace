@@ -1,0 +1,15 @@
+{
+  "legacyAccepted": [
+    { "status": "done", "submissionId": 1, "plugin": {} },
+    { "status": "rejected", "submissionId": 1, "rejectReason": "business rule" }
+  ],
+  "newTechnicalFailure": {
+    "status": "failed",
+    "submissionId": 1,
+    "deliveryAttempt": 1,
+    "callbackKey": "fixture:1:failed",
+    "errorCode": "github_server_error",
+    "errorMessage": "GitHub unavailable",
+    "retryable": true
+  }
+}

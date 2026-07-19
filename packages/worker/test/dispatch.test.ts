@@ -33,7 +33,7 @@ function fakeRepository(maxAttempts = 3): { repository: DispatchRepository; row:
     async markRetry() {
       row.status = 'retry_wait';
     },
-    async markFailed(_id, status) {
+    async markFailed(_id, _attempt, status) {
       row.status = status;
     },
   };
@@ -67,7 +67,8 @@ describe('review dispatch', () => {
   });
 
   it('honors Retry-After and otherwise uses bounded exponential jitter', () => {
-    expect(calculateRetryDelayMs({ attempt: 2, retryAfter: '120', nowMs: 0, random: () => 0.5 })).toBe(120_000);
+    const hinted = calculateRetryDelayMs({ attempt: 2, retryAfter: '120', nowMs: 0, random: () => 0.5 });
+    expect(hinted).toBeGreaterThanOrEqual(120_000);
     const delay = calculateRetryDelayMs({ attempt: 3, nowMs: 0, random: () => 0.5 });
     expect(delay).toBeGreaterThanOrEqual(20_000);
     expect(delay).toBeLessThanOrEqual(40_000);

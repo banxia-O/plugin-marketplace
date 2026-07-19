@@ -3,15 +3,16 @@ import { ReviewResultPayload, SubmissionRequest } from '@ppx/shared';
 import type { AppContext } from './env.js';
 import { authMiddleware } from './auth.js';
 import {
+  ActiveSubmissionConflictError,
+  completeSubmissionWithPlugin,
   findSubmissionById,
-  findSubmissionByIdempotencyKey,
-  insertPluginFromReview,
+  IdempotencyConflictError,
   insertSubmission,
-  isDuplicateRepo,
+  isPublishedRepo,
   transitionSubmissionStatus,
 } from './db.js';
 import { createD1DispatchRepository, dispatchReviewJob } from './dispatch.js';
-import { decideCallbackTransition } from './submission-state.js';
+import { planReviewCallback } from './review-callback.js';
 import {
   createSubmissionIdempotencyKey,
   scopeClientIdempotencyKey,
@@ -19,6 +20,24 @@ import {
 } from './submission-service.js';
 
 export const submissionRoutes = new Hono<AppContext>();
+
+async function persistCallbackTransition(
+  db: D1Database,
+  submissionId: number,
+  from: Parameters<typeof transitionSubmissionStatus>[2],
+  to: Parameters<typeof transitionSubmissionStatus>[3],
+  callbackAttempt: number,
+  input: Parameters<typeof transitionSubmissionStatus>[4],
+): Promise<boolean> {
+  const changed = await transitionSubmissionStatus(db, submissionId, from, to, {
+    ...input,
+    callbackAttempt,
+  });
+  if (changed) return false;
+  const current = await findSubmissionById(db, submissionId);
+  if (current?.status === to && (current.last_callback_attempt ?? 0) >= callbackAttempt) return true;
+  throw new Error(`Submission callback state conflict: submission=${submissionId} attempt=${callbackAttempt}`);
+}
 
 /** POST /api/submissions — 登录用户提交插件上架申请 */
 submissionRoutes.post('/', authMiddleware, async (c) => {
@@ -33,28 +52,38 @@ submissionRoutes.post('/', authMiddleware, async (c) => {
     ? await scopeClientIdempotencyKey(uploaderUserId, clientKey)
     : await createSubmissionIdempotencyKey(uploaderUserId, parsed.data);
 
-  const existingRequest = await findSubmissionByIdempotencyKey(c.env.DB, idempotencyKey);
-  if (existingRequest) {
-    return c.json({ submissionId: existingRequest.id, status: existingRequest.status, deduplicated: true }, 202);
-  }
-
   const payload = toStoredReviewJob(
     { repoUrl, name, oneLiner, subcategoryIds, deployMethod, originalAuthor },
     uploaderUserId,
     idempotencyKey,
   );
-  if (await isDuplicateRepo(c.env.DB, payload.repoUrl)) {
+  if (await isPublishedRepo(c.env.DB, payload.repoUrl)) {
     return c.json({ error: 'conflict', message: '该仓库已在平台上架或正在审核中' }, 409);
   }
 
-  const result = await insertSubmission(c.env.DB, {
-    repoUrl: payload.repoUrl,
-    uploaderUserId,
-    idempotencyKey,
-    payload,
-    correlationId: c.req.header('x-correlation-id'),
-  });
+  let result;
+  try {
+    result = await insertSubmission(c.env.DB, {
+      repoUrl: payload.repoUrl,
+      uploaderUserId,
+      idempotencyKey,
+      payload,
+      correlationId: c.req.header('x-correlation-id'),
+    });
+  } catch (error) {
+    if (error instanceof IdempotencyConflictError) {
+      return c.json({ error: 'idempotency_conflict', message: error.message }, 409);
+    }
+    if (error instanceof ActiveSubmissionConflictError) {
+      return c.json({ error: 'conflict', message: error.message }, 409);
+    }
+    throw error;
+  }
   const submissionId = result.submission.id;
+
+  if (!result.created) {
+    return c.json({ submissionId, status: result.submission.status, deduplicated: true }, 202);
+  }
 
   if (c.env.REVIEW_SERVICE_URL) {
     const execCtx = c.executionCtx;
@@ -109,7 +138,7 @@ adminRoutes.post('/review-result', async (c) => {
   const submission = await findSubmissionById(c.env.DB, result.submissionId);
   if (!submission) return c.json({ error: 'not_found', message: '提交记录不存在' }, 404);
 
-  const decision = decideCallbackTransition(
+  const decision = planReviewCallback(
     {
       status: submission.status,
       attemptCount: submission.attempt_count,
@@ -120,6 +149,7 @@ adminRoutes.post('/review-result', async (c) => {
       status: result.status,
       deliveryAttempt: result.deliveryAttempt,
       retryable: result.status === 'failed' ? result.retryable : undefined,
+      retryAfterMs: result.status === 'failed' ? result.retryAfterMs : undefined,
     },
   );
   if (decision.action === 'ignore') {
@@ -127,28 +157,36 @@ adminRoutes.post('/review-result', async (c) => {
   }
 
   if (result.status === 'done') {
-    await insertPluginFromReview(c.env.DB, result.plugin);
-    await transitionSubmissionStatus(c.env.DB, result.submissionId, submission.status, 'done', {
-      callbackAttempt: result.deliveryAttempt,
-    });
-    return c.json({ ok: true });
+    const completion = await completeSubmissionWithPlugin(c.env.DB, submission, result.plugin, result.deliveryAttempt);
+    return c.json({ ok: true, deduplicated: completion.deduplicated });
   }
 
   if (result.status === 'rejected') {
-    await transitionSubmissionStatus(c.env.DB, result.submissionId, submission.status, 'rejected', {
-      rejectReason: result.rejectReason,
-      errorCode: result.reasonCode,
-      callbackAttempt: result.deliveryAttempt,
-    });
-    return c.json({ ok: true });
+    const deduplicated = await persistCallbackTransition(
+      c.env.DB,
+      result.submissionId,
+      submission.status,
+      'rejected',
+      result.deliveryAttempt,
+      {
+        rejectReason: result.rejectReason,
+        errorCode: result.reasonCode,
+      },
+    );
+    return c.json({ ok: true, deduplicated });
   }
 
-  const retryDelay = Math.max(0, result.retryAfterMs ?? 30_000);
-  await transitionSubmissionStatus(c.env.DB, result.submissionId, submission.status, decision.status, {
-    errorCode: result.errorCode,
-    errorMessage: result.errorMessage,
-    nextAttemptAt: decision.status === 'retry_wait' ? new Date(Date.now() + retryDelay).toISOString() : null,
-    callbackAttempt: result.deliveryAttempt,
-  });
-  return c.json({ ok: true });
+  const deduplicated = await persistCallbackTransition(
+    c.env.DB,
+    result.submissionId,
+    submission.status,
+    decision.status,
+    result.deliveryAttempt,
+    {
+      errorCode: result.errorCode,
+      errorMessage: result.errorMessage,
+      nextAttemptAt: decision.status === 'retry_wait' && 'nextAttemptAt' in decision ? decision.nextAttemptAt : null,
+    },
+  );
+  return c.json({ ok: true, deduplicated });
 });

@@ -109,6 +109,49 @@ export function checkLicense(spdxId: string | null): LicenseCheckResult {
   return { allowed: true };
 }
 
+const ROOT_LICENSE_FILES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'COPYING'] as const;
+
+function decodeGithubContent(value: { content?: string; encoding?: string }): string {
+  if (typeof value.content !== 'string') {
+    throw new ReviewError('review_internal_error', 'GitHub license response is missing content', true, 'technical');
+  }
+  return value.encoding === 'base64' ? Buffer.from(value.content, 'base64').toString('utf-8') : value.content;
+}
+
+function detectSpdxFromLicenseText(content: string): string | null {
+  const text = content.toLowerCase().replace(/\s+/g, ' ');
+  if (text.includes('apache license') && text.includes('version 2.0')) return 'Apache-2.0';
+  if (text.includes('permission is hereby granted, free of charge, to any person obtaining a copy')) return 'MIT';
+  if (text.includes('redistribution and use in source and binary forms')) {
+    return text.includes('neither the name') ? 'BSD-3-Clause' : 'BSD-2-Clause';
+  }
+  if (text.includes('permission to use, copy, modify, and/or distribute this software for any purpose with or without fee')) {
+    return 'ISC';
+  }
+  if (text.includes('this is free and unencumbered software released into the public domain')) return 'Unlicense';
+  if (text.includes('cc0 1.0 universal') || text.includes('creative commons zero')) return 'CC0-1.0';
+  return null;
+}
+
+export async function resolveRepoLicense(
+  spdxId: string | null,
+  owner: string,
+  repo: string,
+  token: string,
+): Promise<string | null> {
+  if (spdxId && spdxId !== 'NOASSERTION') return spdxId;
+  for (const filename of ROOT_LICENSE_FILES) {
+    const path = encodeURIComponent(filename);
+    const response = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, token);
+    if (response.status === 404) continue;
+    if (!response.ok) throw classifyGithubResponse(response);
+    const body = (await response.json()) as { content?: string; encoding?: string };
+    const detected = detectSpdxFromLicenseText(decodeGithubContent(body));
+    if (detected) return detected;
+  }
+  return null;
+}
+
 export async function fetchReadme(owner: string, repo: string, token: string): Promise<ReadmeResult> {
   const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/readme`, token);
   if (res.status === 404) return { content: '', adequate: false };
