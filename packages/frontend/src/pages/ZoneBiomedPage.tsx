@@ -5,7 +5,7 @@ import { useAsync } from '../lib/useAsync.js';
 import { PluginGrid } from '../components/PluginGrid.js';
 
 export function ZoneBiomedPage() {
-  const { data, loading } = useAsync(
+  const { data, loading, error } = useAsync(
     () => apiClient.getPlugins({ category: 'biomed', pageSize: 200 }),
     [],
   );
@@ -26,8 +26,10 @@ export function ZoneBiomedPage() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 'var(--space-12) 0' }}>加载中…</div>
+      ) : error ? (
+        <div className="empty-state">精选内容加载失败，请稍后重试。</div>
       ) : (
-        <PluginGrid plugins={data?.plugins ?? []} />
+        <PluginGrid plugins={data?.plugins ?? []} emptyText="还没有加入半夏精选的插件。" />
       )}
     </div>
   );

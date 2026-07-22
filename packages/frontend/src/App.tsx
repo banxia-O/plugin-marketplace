@@ -7,6 +7,7 @@ import { PluginDetailPage } from './pages/PluginDetailPage.js';
 import { SearchPage } from './pages/SearchPage.js';
 import { UploadPage } from './pages/UploadPage.js';
 import { ZoneBiomedPage } from './pages/ZoneBiomedPage.js';
+import { TrendingPage } from './pages/TrendingPage.js';
 import { AuthProvider } from './lib/auth.js';
 import { ThemeProvider } from './lib/theme.js';
 
@@ -32,6 +33,7 @@ export function App() {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/zone/biomed" element={<ZoneBiomedPage />} />
+              <Route path="/trending" element={<TrendingPage />} />
               <Route path="*" element={<HomePage />} />
             </Routes>
           </Layout>

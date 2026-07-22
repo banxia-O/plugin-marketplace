@@ -16,6 +16,7 @@ export const Category = z.object({
   /** Lucide 图标名，见前端设计规范的图标映射 */
   icon: z.string(),
   sortOrder: z.number().int(),
+  pluginCount: z.number().int().nonnegative().default(0),
   subcategories: z.array(Subcategory),
 });
 export type Category = z.infer<typeof Category>;

@@ -11,7 +11,7 @@ import { dispatchDueReviews } from './dispatch.js';
 
 export type { Env } from './env.js';
 
-const CATEGORIES_CACHE_KEY = 'categories:v1';
+const CATEGORIES_CACHE_KEY = 'categories:v2';
 const CATEGORIES_TTL = 300;
 
 const app = new Hono<AppContext>();
@@ -68,11 +68,14 @@ const TRENDING_CACHE_KEY = 'trending:v1';
 const TRENDING_TTL = 3600;
 
 app.get('/api/trending', async (c) => {
-  const cached = await c.env.CACHE.get(TRENDING_CACHE_KEY, 'json');
+  const requestedLimit = Number(c.req.query('limit') ?? 8);
+  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 8;
+  const cacheKey = `${TRENDING_CACHE_KEY}:${limit}`;
+  const cached = await c.env.CACHE.get(cacheKey, 'json');
   if (cached) return c.json({ plugins: cached });
 
-  const plugins = await getTrendingPlugins(c.env.DB);
-  await c.env.CACHE.put(TRENDING_CACHE_KEY, JSON.stringify(plugins), { expirationTtl: TRENDING_TTL });
+  const plugins = await getTrendingPlugins(c.env.DB, limit);
+  await c.env.CACHE.put(cacheKey, JSON.stringify(plugins), { expirationTtl: TRENDING_TTL });
   return c.json({ plugins });
 });
 
@@ -87,7 +90,7 @@ app.get('/api/plugins/:slug', async (c) => {
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: import('./env.js').Env, ctx: ExecutionContext) {
-    if (event.cron === '0 17 * * *') ctx.waitUntil(syncRepoMetadata(env));
+    if (event.cron === '0 */4 * * *') ctx.waitUntil(syncRepoMetadata(env));
     ctx.waitUntil(dispatchDueReviews(env.DB, {
       reviewServiceUrl: env.REVIEW_SERVICE_URL,
       reviewSecret: env.REVIEW_SERVICE_SECRET,

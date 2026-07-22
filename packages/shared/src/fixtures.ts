@@ -67,7 +67,15 @@ function buildCategories(): Category[] {
       subId += 1;
       return { id: subId, categoryId, name, slug, sortOrder: j + 1 };
     });
-    return { id: categoryId, name: def.name, slug: def.slug, icon: def.icon, sortOrder: i + 1, subcategories };
+    return {
+      id: categoryId,
+      name: def.name,
+      slug: def.slug,
+      icon: def.icon,
+      sortOrder: i + 1,
+      pluginCount: 0,
+      subcategories,
+    };
   });
 }
 

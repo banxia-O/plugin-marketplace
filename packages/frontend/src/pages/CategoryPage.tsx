@@ -97,7 +97,11 @@ export function CategoryPage() {
         ))}
       </div>
 
-      <PluginGrid plugins={listState.data?.plugins ?? []} emptyText="该筛选下暂无插件，换个条件试试。" />
+      {categoriesState.error || allInCat.error || listState.error ? (
+        <div className="empty-state">分类加载失败，请稍后重试。</div>
+      ) : (
+        <PluginGrid plugins={listState.data?.plugins ?? []} emptyText="该筛选下暂无插件，换个条件试试。" />
+      )}
     </div>
   );
 }

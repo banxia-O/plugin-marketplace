@@ -16,6 +16,7 @@ interface CategoryRow {
   slug: string;
   icon: string;
   sort_order: number;
+  plugin_count: number;
 }
 
 interface SubcategoryRow {
@@ -152,7 +153,20 @@ export async function upsertGithubUser(db: D1Database, gh: GithubProfile): Promi
 }
 
 export async function getCategories(db: D1Database): Promise<Category[]> {
-  const cats = (await db.prepare('SELECT id, name, slug, icon, sort_order FROM categories ORDER BY sort_order').all<CategoryRow>()).results;
+  const cats = (
+    await db
+      .prepare(
+        `SELECT c.id, c.name, c.slug, c.icon, c.sort_order,
+                COUNT(DISTINCT CASE WHEN p.review_status != 'rejected' THEN p.id END) AS plugin_count
+         FROM categories c
+         LEFT JOIN subcategories s ON s.category_id = c.id
+         LEFT JOIN plugin_categories pc ON pc.subcategory_id = s.id
+         LEFT JOIN plugins p ON p.id = pc.plugin_id
+         GROUP BY c.id, c.name, c.slug, c.icon, c.sort_order
+         ORDER BY c.sort_order`,
+      )
+      .all<CategoryRow>()
+  ).results;
   const subs = (await db.prepare('SELECT id, category_id, name, slug, sort_order FROM subcategories ORDER BY sort_order').all<SubcategoryRow>()).results;
 
   const subsByCat = new Map<number, Subcategory[]>();
@@ -168,6 +182,7 @@ export async function getCategories(db: D1Database): Promise<Category[]> {
     slug: c.slug,
     icon: c.icon,
     sortOrder: c.sort_order,
+    pluginCount: c.plugin_count,
     subcategories: subsByCat.get(c.id) ?? [],
   }));
 }
@@ -175,31 +190,35 @@ export async function getCategories(db: D1Database): Promise<Category[]> {
 async function refsFor(db: D1Database, pluginIds: number[]): Promise<Map<number, PluginCategoryRef[]>> {
   const map = new Map<number, PluginCategoryRef[]>();
   if (pluginIds.length === 0) return map;
-  const placeholders = pluginIds.map(() => '?').join(',');
-  const rows = (
-    await db
-      .prepare(
-        `SELECT pc.plugin_id AS plugin_id,
-                c.slug AS categorySlug, c.name AS categoryName,
-                s.slug AS subcategorySlug, s.name AS subcategoryName
-         FROM plugin_categories pc
-         JOIN subcategories s ON s.id = pc.subcategory_id
-         JOIN categories c ON c.id = s.category_id
-         WHERE pc.plugin_id IN (${placeholders})
-         ORDER BY c.sort_order, s.sort_order`,
-      )
-      .bind(...pluginIds)
-      .all<CategoryRefRow>()
-  ).results;
-  for (const r of rows) {
-    const list = map.get(r.plugin_id) ?? [];
-    list.push({
-      categorySlug: r.categorySlug,
-      categoryName: r.categoryName,
-      subcategorySlug: r.subcategorySlug,
-      subcategoryName: r.subcategoryName,
-    });
-    map.set(r.plugin_id, list);
+  const batchSize = 80;
+  for (let i = 0; i < pluginIds.length; i += batchSize) {
+    const batch = pluginIds.slice(i, i + batchSize);
+    const placeholders = batch.map(() => '?').join(',');
+    const rows = (
+      await db
+        .prepare(
+          `SELECT pc.plugin_id AS plugin_id,
+                  c.slug AS categorySlug, c.name AS categoryName,
+                  s.slug AS subcategorySlug, s.name AS subcategoryName
+           FROM plugin_categories pc
+           JOIN subcategories s ON s.id = pc.subcategory_id
+           JOIN categories c ON c.id = s.category_id
+           WHERE pc.plugin_id IN (${placeholders})
+           ORDER BY c.sort_order, s.sort_order`,
+        )
+        .bind(...batch)
+        .all<CategoryRefRow>()
+    ).results;
+    for (const r of rows) {
+      const list = map.get(r.plugin_id) ?? [];
+      list.push({
+        categorySlug: r.categorySlug,
+        categoryName: r.categoryName,
+        subcategorySlug: r.subcategorySlug,
+        subcategoryName: r.subcategoryName,
+      });
+      map.set(r.plugin_id, list);
+    }
   }
   return map;
 }
@@ -320,6 +339,7 @@ export async function getPluginBySlug(db: D1Database, slug: string): Promise<Plu
 
 interface TrendingRow extends PluginRow {
   star_delta: number;
+  baseline_date: string;
 }
 
 export async function getTrendingPlugins(
@@ -329,18 +349,17 @@ export async function getTrendingPlugins(
   const rows = (
     await db
       .prepare(
-        `SELECT p.*, (p.stars - COALESCE(s.stars, p.stars)) AS star_delta
+        `SELECT p.*, (p.stars - s.stars) AS star_delta, s.snapshot_date AS baseline_date
          FROM plugins p
-         LEFT JOIN star_snapshots s
+         JOIN star_snapshots s
            ON s.plugin_id = p.id
            AND s.snapshot_date = (
              SELECT MAX(snapshot_date) FROM star_snapshots
              WHERE plugin_id = p.id AND snapshot_date <= date('now', '-30 days')
            )
          WHERE p.review_status != 'rejected'
-           AND (p.stars - COALESCE(s.stars, p.stars)) >= 5
-         ORDER BY (p.stars - COALESCE(s.stars, p.stars))
-                  * (1.0 + sqrt(CAST((p.stars - COALESCE(s.stars, p.stars)) AS REAL) / MAX(COALESCE(s.stars, 1), 1))) DESC
+           AND p.stars > s.stars
+         ORDER BY (p.stars - s.stars) DESC, p.stars DESC, p.id DESC
          LIMIT ?`,
       )
       .bind(limit)
@@ -348,7 +367,11 @@ export async function getTrendingPlugins(
   ).results;
 
   const refs = await refsFor(db, rows.map((r) => r.id));
-  return rows.map((r) => toSummary(r, refs.get(r.id) ?? []));
+  return rows.map((r) => ({
+    ...toSummary(r, refs.get(r.id) ?? []),
+    starDelta: r.star_delta,
+    trendBaselineDate: r.baseline_date,
+  }));
 }
 
 // ── Submissions ──────────────────────────────────────────────────────────────

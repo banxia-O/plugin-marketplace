@@ -33,8 +33,22 @@ async function fetchRepoMeta(
 }
 
 export async function syncRepoMetadata(env: Env): Promise<{ synced: number; failed: number }> {
+  const batchSize = env.GITHUB_TOKEN ? 200 : 40;
   const plugins = (
-    await env.DB.prepare('SELECT id, repo_url FROM plugins').all<PluginRepo>()
+    await env.DB.prepare(
+      `SELECT p.id, p.repo_url
+       FROM plugins p
+       LEFT JOIN (
+         SELECT plugin_id, MAX(snapshot_date) AS last_snapshot_date
+         FROM star_snapshots
+         GROUP BY plugin_id
+       ) snapshots ON snapshots.plugin_id = p.id
+       WHERE p.review_status != 'rejected'
+       ORDER BY snapshots.last_snapshot_date IS NOT NULL,
+                snapshots.last_snapshot_date,
+                p.id
+       LIMIT ?`,
+    ).bind(batchSize).all<PluginRepo>()
   ).results;
 
   let synced = 0;
@@ -69,6 +83,6 @@ export async function syncRepoMetadata(env: Env): Promise<{ synced: number; fail
     }
   }
 
-  console.log(`[sync] 完成：${synced} 成功，${failed} 失败，共 ${plugins.length} 个插件`);
+  console.log(`[sync] 完成：${synced} 成功，${failed} 失败，本批 ${plugins.length} 个插件`);
   return { synced, failed };
 }
