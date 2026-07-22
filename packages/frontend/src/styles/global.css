@@ -522,6 +522,10 @@ body::after {
   align-items: center;
   gap: var(--space-3);
 }
+.plugin-card__trend {
+  color: var(--success);
+  font-weight: 600;
+}
 .plugin-card__actions {
   display: flex;
   gap: var(--space-2);
@@ -636,6 +640,16 @@ body::after {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+}
+.page-head__intro {
+  display: grid;
+  gap: var(--space-2);
+}
+.page-head__subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 /* ── 详情页 ── */

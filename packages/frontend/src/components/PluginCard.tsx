@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Download, Heart, RefreshCw } from 'lucide-react';
+import { Download, Heart, RefreshCw, Star, TrendingUp } from 'lucide-react';
 import type { PluginSummary } from '@ppx/shared';
 import { deployLabel, deployTagClass, reviewLabel, reviewTagClass } from '../lib/labels.js';
 import { CopyButton } from './CopyButton.js';
@@ -35,6 +35,14 @@ export function PluginCard({ plugin }: { plugin: PluginSummary }) {
       </div>
 
       <div className="plugin-card__meta">
+        <span>
+          <Star size={13} style={{ verticalAlign: '-2px' }} /> {plugin.stars.toLocaleString()}
+        </span>
+        {plugin.starDelta !== undefined && (
+          <span className="plugin-card__trend">
+            <TrendingUp size={13} style={{ verticalAlign: '-2px' }} /> +{plugin.starDelta.toLocaleString()}
+          </span>
+        )}
         <span>
           <Download size={13} style={{ verticalAlign: '-2px' }} /> {plugin.downloadCount}
         </span>

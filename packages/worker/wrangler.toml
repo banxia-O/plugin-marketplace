@@ -15,10 +15,10 @@ migrations_dir = "migrations"
 binding = "CACHE"
 id = "d70868a07c3345058589ca0b1cc2abf2"
 
-# D1 outbox 每 5 分钟补投；每天 UTC 17:00 同时同步 GitHub 仓库元数据。
-# 本文件只声明所需触发器；本 PR 不执行部署或修改 Cloudflare 资源。
+# D1 outbox 每 5 分钟补投；每 4 小时分批同步 GitHub 仓库元数据。
+# Cron Trigger 由本配置随 Worker 部署统一管理。
 [triggers]
-crons = ["*/5 * * * *", "0 17 * * *"]
+crons = ["*/5 * * * *", "0 */4 * * *"]
 
 # 敏感变量通过 CF Dashboard → Workers → 变量和机密 配置，不写入代码仓库
 [vars]

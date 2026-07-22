@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { Dna, Flame, LayoutGrid, Sparkles, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client.js';
@@ -11,22 +10,7 @@ export function HomePage() {
   const categoriesState = useAsync(() => apiClient.getCategories(), []);
   const hotState = useAsync(() => apiClient.getPlugins({ sort: 'hottest', pageSize: 8 }), []);
   const newState = useAsync(() => apiClient.getPlugins({ sort: 'newest', pageSize: 8 }), []);
-  const trendingState = useAsync(() => apiClient.getTrending(), []);
-  const allState = useAsync(() => apiClient.getPlugins({ pageSize: 200 }), []);
-
-  const countByCategory = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const p of allState.data?.plugins ?? []) {
-      const seen = new Set<string>();
-      for (const c of p.categories) {
-        if (!seen.has(c.categorySlug)) {
-          seen.add(c.categorySlug);
-          map.set(c.categorySlug, (map.get(c.categorySlug) ?? 0) + 1);
-        }
-      }
-    }
-    return map;
-  }, [allState.data]);
+  const trendingState = useAsync(() => apiClient.getTrending(8), []);
 
   const trendingPlugins = trendingState.data?.plugins ?? [];
 
@@ -47,7 +31,7 @@ export function HomePage() {
         {/* 两张入口卡片 */}
         <section className="section">
           <div className="entry-cards">
-            <Link to="/category/biomed" className="entry-card entry-card--trending">
+            <Link to="/trending" className="entry-card entry-card--trending">
               <TrendingUp size={28} />
               <div>
                 <h3 className="entry-card__title">⭐ 飙升榜</h3>
@@ -97,7 +81,7 @@ export function HomePage() {
           </h2>
           <div className="category-grid">
             {(categoriesState.data?.categories ?? []).map((c) => (
-              <CategoryCard key={c.slug} category={c} count={countByCategory.get(c.slug) ?? 0} />
+              <CategoryCard key={c.slug} category={c} />
             ))}
           </div>
         </section>

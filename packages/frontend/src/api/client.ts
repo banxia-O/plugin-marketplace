@@ -56,8 +56,8 @@ function buildQuery(query: Partial<PluginListQuery>): string {
   return s ? `?${s}` : '';
 }
 
-async function getTrending(): Promise<PluginListResponse> {
-  const raw = (await getJson('/api/trending')) as { plugins: unknown[] };
+async function getTrending(limit = 8): Promise<PluginListResponse> {
+  const raw = (await getJson(`/api/trending?limit=${limit}`)) as { plugins: unknown[] };
   return PluginListResponse.parse({ plugins: raw.plugins, total: raw.plugins.length, page: 1, pageSize: raw.plugins.length });
 }
 

@@ -27,6 +27,8 @@ export const PluginSummary = z.object({
   categories: z.array(PluginCategoryRef),
   lastRepoUpdate: z.string().nullable(),
   updatedAt: z.string(),
+  starDelta: z.number().int().positive().optional(),
+  trendBaselineDate: z.string().optional(),
 });
 export type PluginSummary = z.infer<typeof PluginSummary>;
 
