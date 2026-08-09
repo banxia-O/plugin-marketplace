@@ -13,6 +13,7 @@ import {
 } from './db.js';
 import { createD1DispatchRepository, dispatchReviewJob } from './dispatch.js';
 import { planReviewCallback } from './review-callback.js';
+import { configuredSecret, secretsMatch } from './runtime-secrets.js';
 import {
   createSubmissionIdempotencyKey,
   scopeClientIdempotencyKey,
@@ -41,6 +42,11 @@ async function persistCallbackTransition(
 
 /** POST /api/submissions — 登录用户提交插件上架申请 */
 submissionRoutes.post('/', authMiddleware, async (c) => {
+  const reviewServiceUrl = configuredSecret(c.env.REVIEW_SERVICE_URL);
+  const reviewSecret = configuredSecret(c.env.REVIEW_SERVICE_SECRET);
+  if (!reviewServiceUrl || !reviewSecret) {
+    return c.json({ error: 'not_configured', message: '审核服务暂不可用' }, 503);
+  }
   const parsed = SubmissionRequest.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: 'bad_request', message: parsed.error.issues[0]?.message ?? '提交信息不合法' }, 400);
@@ -85,13 +91,13 @@ submissionRoutes.post('/', authMiddleware, async (c) => {
     return c.json({ submissionId, status: result.submission.status, deduplicated: true }, 202);
   }
 
-  if (c.env.REVIEW_SERVICE_URL) {
-    const execCtx = c.executionCtx;
-    execCtx?.waitUntil(
+  const execCtx = c.executionCtx;
+  if (typeof execCtx?.waitUntil === 'function') {
+    execCtx.waitUntil(
       dispatchReviewJob(submissionId, {
         repository: createD1DispatchRepository(c.env.DB),
-        reviewServiceUrl: c.env.REVIEW_SERVICE_URL,
-        reviewSecret: c.env.REVIEW_SERVICE_SECRET,
+        reviewServiceUrl,
+        reviewSecret,
       }).catch((error) => console.error('[submissions] dispatch failed', { submissionId, error: error instanceof Error ? error.message : 'unknown' })),
     );
   }
@@ -125,7 +131,7 @@ export const adminRoutes = new Hono<AppContext>();
 
 /** POST /api/admin/review-result — 审核服务回写（用 x-review-secret 鉴权） */
 adminRoutes.post('/review-result', async (c) => {
-  if (c.req.header('x-review-secret') !== c.env.REVIEW_SERVICE_SECRET) {
+  if (!(await secretsMatch(c.env.REVIEW_SERVICE_SECRET, c.req.header('x-review-secret')))) {
     return c.json({ error: 'unauthorized', message: '无效的审核密钥' }, 401);
   }
 

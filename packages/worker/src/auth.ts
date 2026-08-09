@@ -5,6 +5,7 @@ import * as bcrypt from 'bcryptjs';
 import { LoginRequest, RegisterRequest } from '@ppx/shared';
 import type { AuthUser } from '@ppx/shared';
 import type { AppContext } from './env.js';
+import { configuredSecret } from './runtime-secrets.js';
 import {
   createUser,
   findUserById,
@@ -36,13 +37,17 @@ async function signToken(secret: string, user: UserRow): Promise<string> {
 
 /** 验证 Bearer token，成功时注入 userId，失败返回 401 */
 export const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
+  const jwtSecret = configuredSecret(c.env.JWT_SECRET);
+  if (!jwtSecret) {
+    return c.json({ error: 'not_configured', message: '认证服务暂不可用' }, 503);
+  }
   const header = c.req.header('Authorization');
   if (!header || !header.startsWith('Bearer ')) {
     return c.json({ error: 'unauthorized', message: '缺少认证令牌' }, 401);
   }
   const token = header.slice('Bearer '.length).trim();
   try {
-    const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
+    const payload = await verify(token, jwtSecret, 'HS256');
     const userId = Number(payload.sub);
     if (!Number.isInteger(userId) || userId <= 0) throw new Error('invalid subject');
     c.set('userId', userId);
@@ -90,6 +95,10 @@ authRoutes.post('/register', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'bad_request', message: parsed.error?.issues[0]?.message ?? '注册信息不合法' }, 400);
   }
+  const jwtSecret = configuredSecret(c.env.JWT_SECRET);
+  if (!jwtSecret) {
+    return c.json({ error: 'not_configured', message: '认证服务暂不可用' }, 503);
+  }
   const { username, email, password } = parsed.data;
 
   const existing = await findUserByUsernameOrEmail(c.env.DB, username, email ?? null);
@@ -99,7 +108,7 @@ authRoutes.post('/register', async (c) => {
 
   const passwordHash = bcrypt.hashSync(password, BCRYPT_COST);
   const user = await createUser(c.env.DB, { username, email: email ?? null, passwordHash });
-  const token = await signToken(c.env.JWT_SECRET, user);
+  const token = await signToken(jwtSecret, user);
   return c.json({ token, user: toAuthUser(user) }, 201);
 });
 
@@ -107,6 +116,10 @@ authRoutes.post('/login', async (c) => {
   const parsed = LoginRequest.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: 'bad_request', message: '登录信息不合法' }, 400);
+  }
+  const jwtSecret = configuredSecret(c.env.JWT_SECRET);
+  if (!jwtSecret) {
+    return c.json({ error: 'not_configured', message: '认证服务暂不可用' }, 503);
   }
   const { identifier, password } = parsed.data;
 
@@ -116,20 +129,23 @@ authRoutes.post('/login', async (c) => {
     return c.json({ error: 'unauthorized', message: '用户名或密码错误' }, 401);
   }
 
-  const token = await signToken(c.env.JWT_SECRET, user);
+  const token = await signToken(jwtSecret, user);
   return c.json({ token, user: toAuthUser(user) });
 });
 
 authRoutes.get('/github', async (c) => {
-  if (!c.env.GITHUB_CLIENT_ID) {
-    return c.json({ error: 'not_configured', message: 'GitHub 登录未配置' }, 500);
+  const clientId = configuredSecret(c.env.GITHUB_CLIENT_ID);
+  const clientSecret = configuredSecret(c.env.GITHUB_CLIENT_SECRET);
+  const jwtSecret = configuredSecret(c.env.JWT_SECRET);
+  if (!clientId || !clientSecret || !jwtSecret) {
+    return c.json({ error: 'not_configured', message: 'GitHub 登录暂不可用' }, 503);
   }
   const state = crypto.randomUUID();
   await c.env.CACHE.put(`oauth:state:${state}`, '1', { expirationTtl: OAUTH_STATE_TTL_SECONDS });
 
   const redirectUri = new URL('/api/auth/github/callback', c.req.url).toString();
   const authorize = new URL('https://github.com/login/oauth/authorize');
-  authorize.searchParams.set('client_id', c.env.GITHUB_CLIENT_ID);
+  authorize.searchParams.set('client_id', clientId);
   authorize.searchParams.set('redirect_uri', redirectUri);
   authorize.searchParams.set('scope', GITHUB_SCOPE);
   authorize.searchParams.set('state', state);
@@ -138,6 +154,12 @@ authRoutes.get('/github', async (c) => {
 });
 
 authRoutes.get('/github/callback', async (c) => {
+  const clientId = configuredSecret(c.env.GITHUB_CLIENT_ID);
+  const clientSecret = configuredSecret(c.env.GITHUB_CLIENT_SECRET);
+  const jwtSecret = configuredSecret(c.env.JWT_SECRET);
+  if (!clientId || !clientSecret || !jwtSecret) {
+    return c.json({ error: 'not_configured', message: 'GitHub 登录暂不可用' }, 503);
+  }
   const code = c.req.query('code');
   const state = c.req.query('state');
   if (!code || !state) {
@@ -159,8 +181,8 @@ authRoutes.get('/github/callback', async (c) => {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({
-        client_id: c.env.GITHUB_CLIENT_ID,
-        client_secret: c.env.GITHUB_CLIENT_SECRET,
+        client_id: clientId,
+        client_secret: clientSecret,
         code,
         redirect_uri: redirectUri,
       }),
@@ -175,7 +197,7 @@ authRoutes.get('/github/callback', async (c) => {
   }
 
   const user = await upsertGithubUser(c.env.DB, profile);
-  const token = await signToken(c.env.JWT_SECRET, user);
+  const token = await signToken(jwtSecret, user);
 
   // 浏览器重定向流：把 token 经 URL fragment 交回 SPA（fragment 不进服务端日志）
   const handoff = new URL('/', c.req.url);

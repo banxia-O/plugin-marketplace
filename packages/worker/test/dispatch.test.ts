@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { calculateRetryDelayMs, dispatchReviewJob } from '../src/dispatch.js';
+import { calculateRetryDelayMs, dispatchDueReviews, dispatchReviewJob } from '../src/dispatch.js';
 import type { DispatchRepository, DispatchSubmission } from '../src/dispatch.js';
 
 function fakeRepository(maxAttempts = 3): { repository: DispatchRepository; row: DispatchSubmission } {
@@ -41,6 +41,29 @@ function fakeRepository(maxAttempts = 3): { repository: DispatchRepository; row:
 }
 
 describe('review dispatch', () => {
+  it('does not claim or send work when review configuration is missing', async () => {
+    const claim = vi.fn();
+    const send = vi.fn();
+    const repository = {
+      claim,
+      markProcessing: vi.fn(),
+      markRetry: vi.fn(),
+      markFailed: vi.fn(),
+    } satisfies DispatchRepository;
+
+    await dispatchReviewJob(9, { repository, send, reviewServiceUrl: 'https://review.example', reviewSecret: '' });
+    expect(claim).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+
+    const prepare = vi.fn();
+    await dispatchDueReviews({ prepare } as unknown as D1Database, {
+      send,
+      reviewServiceUrl: 'https://review.example',
+      reviewSecret: undefined,
+    });
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
   it('redelivers a retryable failed request', async () => {
     const { repository, row } = fakeRepository();
     const send = vi
