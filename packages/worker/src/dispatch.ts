@@ -2,6 +2,7 @@ import type { ReviewJobPayload, StoredReviewJobPayload } from '@ppx/shared';
 import { assertSubmissionTransition } from './submission-state.js';
 import type { SubmissionStatus } from './submission-state.js';
 import { calculateRetryDelayMs } from './retry-policy.js';
+import { configuredSecret } from './runtime-secrets.js';
 
 export { calculateRetryDelayMs } from './retry-policy.js';
 
@@ -43,13 +44,17 @@ function classifyDispatchResponse(response: Response): { retryable: boolean; cod
 export interface DispatchDependencies {
   repository: DispatchRepository;
   send?: typeof fetch;
-  reviewServiceUrl: string;
-  reviewSecret: string;
+  reviewServiceUrl?: string;
+  reviewSecret?: string;
   now?: () => number;
   random?: () => number;
 }
 
 export async function dispatchReviewJob(id: number, dependencies: DispatchDependencies): Promise<void> {
+  const reviewServiceUrl = configuredSecret(dependencies.reviewServiceUrl);
+  const reviewSecret = configuredSecret(dependencies.reviewSecret);
+  if (!reviewServiceUrl || !reviewSecret) return;
+
   const claimed = await dependencies.repository.claim(id);
   if (!claimed) return;
 
@@ -61,11 +66,11 @@ export async function dispatchReviewJob(id: number, dependencies: DispatchDepend
 
   let response: Response;
   try {
-    response = await (dependencies.send ?? fetch)(`${dependencies.reviewServiceUrl}/review`, {
+    response = await (dependencies.send ?? fetch)(`${reviewServiceUrl}/review`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-review-secret': dependencies.reviewSecret,
+        'x-review-secret': reviewSecret,
         'idempotency-key': `${job.idempotencyKey}:${job.deliveryAttempt}`,
       },
       body: JSON.stringify(job),
@@ -217,6 +222,8 @@ export async function dispatchDueReviews(
   config: Omit<DispatchDependencies, 'repository'>,
   limit = 20,
 ): Promise<void> {
+  if (!configuredSecret(config.reviewServiceUrl) || !configuredSecret(config.reviewSecret)) return;
+
   const due = (
     await db
       .prepare(`SELECT id FROM submissions

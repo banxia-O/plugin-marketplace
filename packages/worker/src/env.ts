@@ -1,11 +1,11 @@
 export interface Env {
   DB: D1Database;
   CACHE: KVNamespace;
-  GITHUB_CLIENT_ID: string;
-  JWT_SECRET: string;
-  GITHUB_CLIENT_SECRET: string;
-  REVIEW_SERVICE_SECRET: string;
-  REVIEW_SERVICE_URL: string;
+  GITHUB_CLIENT_ID?: string;
+  JWT_SECRET?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  REVIEW_SERVICE_SECRET?: string;
+  REVIEW_SERVICE_URL?: string;
   GITHUB_TOKEN?: string;
 }
 

@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import type { ReviewJobPayload } from '@ppx/shared';
-import { loadEnv } from './env.js';
+import { loadEnv, reviewSecretsMatch } from './env.js';
 import { runPipeline } from './pipeline.js';
 
 const env = loadEnv();
@@ -65,7 +65,7 @@ app.get('/health', (c) => c.json({ status: 'ok' }));
  * 立即返回 202，异步跑完整管线后回写 Worker admin 接口。
  */
 app.post('/review', async (c) => {
-  if (c.req.header('x-review-secret') !== env.REVIEW_SERVICE_SECRET) {
+  if (!reviewSecretsMatch(env.REVIEW_SERVICE_SECRET, c.req.header('x-review-secret'))) {
     return c.json({ error: 'unauthorized' }, 401);
   }
   const job = normalizeJob(await c.req.json().catch(() => null));

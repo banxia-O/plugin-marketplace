@@ -29,7 +29,7 @@ async function postSubmission(db: D1Database, clientKey: string, name = 'Plugin'
     JWT_SECRET,
     GITHUB_CLIENT_SECRET: '',
     REVIEW_SERVICE_SECRET: 'review-test-secret',
-    REVIEW_SERVICE_URL: '',
+    REVIEW_SERVICE_URL: 'https://review.example',
   } satisfies Env;
   return worker.fetch(new Request('https://worker.example/api/submissions', {
     method: 'POST',
