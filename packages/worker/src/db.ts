@@ -101,8 +101,13 @@ async function usernameTaken(db: D1Database, username: string): Promise<boolean>
   return !!(await db.prepare('SELECT 1 AS x FROM users WHERE username = ?').bind(username).first());
 }
 
-async function emailTaken(db: D1Database, email: string): Promise<boolean> {
-  return !!(await db.prepare('SELECT 1 AS x FROM users WHERE email = ?').bind(email).first());
+async function findUserByEmail(db: D1Database, email: string): Promise<UserRow | null> {
+  return (
+    (await db
+      .prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE')
+      .bind(email)
+      .first<UserRow>()) ?? null
+  );
 }
 
 /** github_login 可能与已有用户名冲突，逐次加后缀直到唯一 */
@@ -124,6 +129,32 @@ export interface GithubProfile {
   email: string | null;
 }
 
+async function mergeGithubUser(
+  db: D1Database,
+  duplicate: UserRow,
+  owner: UserRow,
+  gh: GithubProfile,
+): Promise<UserRow> {
+  if (owner.github_id !== null && owner.github_id !== gh.id) {
+    throw new Error('GitHub account cannot be linked to this email');
+  }
+
+  await db.batch([
+    db.prepare('UPDATE plugins SET uploader_user_id = ? WHERE uploader_user_id = ?').bind(owner.id, duplicate.id),
+    db.prepare('UPDATE submissions SET uploader_user_id = ? WHERE uploader_user_id = ?').bind(owner.id, duplicate.id),
+    db
+      .prepare('UPDATE submissions_legacy_phase1 SET uploader_user_id = ? WHERE uploader_user_id = ?')
+      .bind(owner.id, duplicate.id),
+    db.prepare('UPDATE ledger SET actor_user_id = ? WHERE actor_user_id = ?').bind(owner.id, duplicate.id),
+    db.prepare('DELETE FROM users WHERE id = ?').bind(duplicate.id),
+    db
+      .prepare('UPDATE users SET github_id = ?, github_login = ?, avatar_url = ? WHERE id = ?')
+      .bind(gh.id, gh.login, gh.avatarUrl, owner.id),
+  ]);
+
+  return (await findUserById(db, owner.id)) as UserRow;
+}
+
 /** 以 github_id 为唯一键 upsert；新建时回避用户名/邮箱唯一约束冲突 */
 export async function upsertGithubUser(db: D1Database, gh: GithubProfile): Promise<UserRow> {
   const existing = await db
@@ -132,6 +163,11 @@ export async function upsertGithubUser(db: D1Database, gh: GithubProfile): Promi
     .first<UserRow>();
 
   if (existing) {
+    const emailOwner = gh.email ? await findUserByEmail(db, gh.email) : null;
+    if (emailOwner && emailOwner.id !== existing.id) {
+      return mergeGithubUser(db, existing, emailOwner, gh);
+    }
+
     const updated = await db
       .prepare(
         'UPDATE users SET github_login = ?, avatar_url = ?, email = COALESCE(email, ?) WHERE github_id = ? RETURNING *',
@@ -141,13 +177,26 @@ export async function upsertGithubUser(db: D1Database, gh: GithubProfile): Promi
     return updated as UserRow;
   }
 
+  if (gh.email) {
+    const emailOwner = await findUserByEmail(db, gh.email);
+    if (emailOwner) {
+      if (emailOwner.github_id !== null && emailOwner.github_id !== gh.id) {
+        throw new Error('GitHub account cannot be linked to this email');
+      }
+      const linked = await db
+        .prepare('UPDATE users SET github_id = ?, github_login = ?, avatar_url = ? WHERE id = ? RETURNING *')
+        .bind(gh.id, gh.login, gh.avatarUrl, emailOwner.id)
+        .first<UserRow>();
+      return linked as UserRow;
+    }
+  }
+
   const username = await uniqueUsername(db, gh.login);
-  const email = gh.email && !(await emailTaken(db, gh.email)) ? gh.email : null;
   const created = await db
     .prepare(
       'INSERT INTO users (username, email, github_id, github_login, avatar_url) VALUES (?, ?, ?, ?, ?) RETURNING *',
     )
-    .bind(username, email, gh.id, gh.login, gh.avatarUrl)
+    .bind(username, gh.email, gh.id, gh.login, gh.avatarUrl)
     .first<UserRow>();
   return created as UserRow;
 }
