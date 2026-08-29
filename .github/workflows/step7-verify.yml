@@ -1,0 +1,77 @@
+name: Step 7 Verification
+
+on:
+  push:
+    branches:
+      - feature/wechat-miniapp-v1
+    paths:
+      - 'packages/miniapp/**'
+      - '.github/workflows/step7-verify.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+
+      - name: Miniapp typecheck
+        run: pnpm --filter @ppx/miniapp typecheck
+
+      - name: Miniapp WeChat build
+        run: pnpm --filter @ppx/miniapp build
+
+      - name: Confirm visual output and mobile safeguards
+        run: |
+          test -f packages/miniapp/dist/app.wxss
+          for page in index search category categories plugin about; do
+            test -f "packages/miniapp/dist/pages/$page/index.js"
+          done
+          grep -F "import './app.css'" packages/miniapp/src/app.tsx
+          grep -F "env(safe-area-inset-bottom)" packages/miniapp/src/app.css
+          grep -F "word-break: break-all" packages/miniapp/src/app.css
+          grep -F "min-height: 88rpx" packages/miniapp/src/app.css
+          grep -F "markdown-card" packages/miniapp/src/pages/plugin/index.tsx
+          grep -F "chip chip--active" packages/miniapp/src/pages/category/index.tsx
+          grep -F "plugin-card__title" packages/miniapp/src/components/plugin-card.tsx
+
+      - name: Confirm no visual dependency growth
+        run: |
+          if grep -E 'taro-ui|nutui|vant|antd|tailwind|unocss' packages/miniapp/package.json >/dev/null 2>&1; then
+            echo 'Unexpected UI framework dependency found'
+            exit 1
+          fi
+          git diff HEAD^ -- packages/miniapp/package.json pnpm-lock.yaml
+
+      - name: Report miniapp build size
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const root = 'packages/miniapp/dist'
+          let bytes = 0
+          let files = 0
+          const walk = (dir) => {
+            for (const name of fs.readdirSync(dir)) {
+              const file = path.join(dir, name)
+              const stat = fs.statSync(file)
+              if (stat.isDirectory()) walk(file)
+              else { bytes += stat.size; files += 1 }
+            }
+          }
+          walk(root)
+          console.log(`Miniapp dist: ${files} files, ${(bytes / 1024).toFixed(1)} KiB total`)
+          NODE
+
+      - name: Existing workspace regression checks
+        run: |
+          pnpm -r test
+          pnpm -r typecheck
+          pnpm -r build
