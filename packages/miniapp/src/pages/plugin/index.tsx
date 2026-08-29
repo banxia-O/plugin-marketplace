@@ -31,6 +31,15 @@ function formatDate(value: string | null): string {
   return value ? value.slice(0, 10) : '暂无'
 }
 
+function DetailRow({ label, value }: { label: string; value: string | number }) {
+  return (
+    <View className='detail-row'>
+      <Text className='detail-label'>{label}</Text>
+      <Text className='detail-value'>{value}</Text>
+    </View>
+  )
+}
+
 export default function PluginPage() {
   const rawSlug = Taro.getCurrentInstance().router?.params.slug ?? ''
   const slug = rawSlug ? decodeURIComponent(rawSlug) : ''
@@ -88,23 +97,27 @@ export default function PluginPage() {
 
   if (loadState === 'loading') {
     return (
-      <View style={{ padding: '40rpx 32rpx', fontSize: '30rpx' }}>
-        <Text>插件详情加载中…</Text>
+      <View className='page-shell'>
+        <View className='status-panel status-panel--loading'>
+          <Text>插件详情加载中…</Text>
+        </View>
       </View>
     )
   }
 
   if (loadState === 'error' || !plugin) {
     return (
-      <View style={{ padding: '40rpx 32rpx', fontSize: '30rpx', lineHeight: 1.6 }}>
-        <View style={{ marginBottom: '16rpx' }}>
-          <Text>插件详情加载失败：{error ?? '未知错误'}</Text>
+      <View className='page-shell'>
+        <View className='status-panel status-panel--error'>
+          <View className='status-panel__message'>
+            <Text>插件详情加载失败：{error ?? '未知错误'}</Text>
+          </View>
+          {slug ? (
+            <Button className='btn btn-ghost btn-compact' onClick={() => void loadPlugin()}>
+              重试
+            </Button>
+          ) : null}
         </View>
-        {slug ? (
-          <Button onClick={() => void loadPlugin()} style={{ fontSize: '28rpx' }}>
-            重试
-          </Button>
-        ) : null}
       </View>
     )
   }
@@ -114,90 +127,74 @@ export default function PluginPage() {
     : '暂无'
 
   return (
-    <View style={{ padding: '40rpx 32rpx 72rpx', fontSize: '28rpx', lineHeight: 1.65 }}>
-      <View style={{ marginBottom: '10rpx', fontSize: '40rpx', fontWeight: '700' }}>
+    <View className='page-shell'>
+      <View className='page-title'>
         <Text>{plugin.name}</Text>
       </View>
-      <View style={{ marginBottom: '28rpx', color: '#555555' }}>
+      <View className='page-subtitle'>
         <Text>{plugin.oneLiner}</Text>
       </View>
 
-      <View style={{ marginBottom: '28rpx', padding: '24rpx', border: '1rpx solid #e5e5e5', borderRadius: '16rpx' }}>
-        <View style={{ marginBottom: '10rpx' }}>
-          <Text>分类：{categoryText}</Text>
-        </View>
-        <View style={{ marginBottom: '10rpx' }}>
-          <Text>部署方式：{deployMethodLabel[plugin.deployMethod]}</Text>
-        </View>
-        <View style={{ marginBottom: '10rpx' }}>
-          <Text>Stars：{plugin.stars}</Text>
-        </View>
-        <View style={{ marginBottom: '10rpx' }}>
-          <Text>仓库最近更新：{formatDate(plugin.lastRepoUpdate)}</Text>
-        </View>
-        <View style={{ marginBottom: '10rpx' }}>
-          <Text>审核状态：{reviewStatusLabel[plugin.reviewStatus]}</Text>
-        </View>
-        <View style={{ marginBottom: '10rpx' }}>
-          <Text>agent.md：{agentStatusLabel[plugin.agentMdStatus]}</Text>
-        </View>
-        <View style={{ marginBottom: '10rpx' }}>
-          <Text>支持平台：{plugin.supportedPlatforms.length ? plugin.supportedPlatforms.join(' / ') : '暂无'}</Text>
-        </View>
-        <View style={{ marginBottom: '10rpx' }}>
-          <Text>许可证：{plugin.license || '暂无'}</Text>
-        </View>
-        <View>
-          <Text>原作者：{plugin.originalAuthor || '暂无'}</Text>
-        </View>
+      <View className='detail-card'>
+        <DetailRow label='分类' value={categoryText} />
+        <DetailRow label='部署方式' value={deployMethodLabel[plugin.deployMethod]} />
+        <DetailRow label='Stars' value={plugin.stars} />
+        <DetailRow label='仓库更新' value={formatDate(plugin.lastRepoUpdate)} />
+        <DetailRow label='审核状态' value={reviewStatusLabel[plugin.reviewStatus]} />
+        <DetailRow label='agent.md' value={agentStatusLabel[plugin.agentMdStatus]} />
+        <DetailRow label='支持平台' value={plugin.supportedPlatforms.length ? plugin.supportedPlatforms.join(' / ') : '暂无'} />
+        <DetailRow label='许可证' value={plugin.license || '暂无'} />
+        <DetailRow label='原作者' value={plugin.originalAuthor || '暂无'} />
       </View>
 
-      <View style={{ marginBottom: '12rpx', fontSize: '32rpx', fontWeight: '600' }}>
-        <Text>原仓库地址</Text>
-      </View>
-      <View style={{ marginBottom: '14rpx', color: '#555555', wordBreak: 'break-all' }}>
-        <Text userSelect>{plugin.repoUrl}</Text>
-      </View>
-      <Button
-        onClick={() => void copyText(plugin.repoUrl, '仓库地址已复制')}
-        style={{ marginBottom: '34rpx', fontSize: '28rpx' }}
-      >
-        复制仓库地址
-      </Button>
-
-      <View style={{ marginBottom: '8rpx', fontSize: '34rpx', fontWeight: '700' }}>
-        <Text>agent.md</Text>
-      </View>
-      <View style={{ marginBottom: '20rpx', color: '#777777', fontSize: '24rpx' }}>
-        <Text>面向 AI Agent 优化的中文使用手册，用于理解插件用途、安装、配置和验证方式。</Text>
+      <View className='section'>
+        <View className='section-header'>
+          <Text className='section-title'>原仓库地址</Text>
+        </View>
+        <View className='repo-box'>
+          <Text userSelect>{plugin.repoUrl}</Text>
+        </View>
+        <Button className='btn btn-secondary' onClick={() => void copyText(plugin.repoUrl, '仓库地址已复制')}>
+          复制仓库地址
+        </Button>
       </View>
 
-      {plugin.agentMd ? (
-        <>
-          <View style={{ marginBottom: '22rpx', padding: '24rpx', border: '1rpx solid #e5e5e5', borderRadius: '16rpx' }}>
-            <MarkdownView source={plugin.agentMd} />
+      <View className='section'>
+        <View className='section-header'>
+          <View>
+            <View className='section-title'>
+              <Text>agent.md</Text>
+            </View>
+            <View className='section-note'>
+              <Text>面向 AI Agent 优化的中文使用手册，用于理解插件用途、安装、配置和验证方式。</Text>
+            </View>
           </View>
-          <Button
-            onClick={() => void copyText(plugin.agentMd as string, 'agent.md 已复制')}
-            style={{ fontSize: '28rpx' }}
-          >
-            复制 agent.md
-          </Button>
-        </>
-      ) : (
-        <View style={{ padding: '24rpx', border: '1rpx solid #e5e5e5', borderRadius: '16rpx', color: '#666666' }}>
-          <Text>当前 agent.md 状态：{agentStatusLabel[plugin.agentMdStatus]}。暂无可展示内容。</Text>
         </View>
-      )}
+
+        {plugin.agentMd ? (
+          <>
+            <View className='markdown-card'>
+              <MarkdownView source={plugin.agentMd} />
+            </View>
+            <Button className='btn btn-primary' onClick={() => void copyText(plugin.agentMd as string, 'agent.md 已复制')}>
+              复制 agent.md
+            </Button>
+          </>
+        ) : (
+          <View className='status-panel status-panel--empty'>
+            <Text>当前 agent.md 状态：{agentStatusLabel[plugin.agentMdStatus]}。暂无可展示内容。</Text>
+          </View>
+        )}
+      </View>
 
       {copyError ? (
-        <View style={{ marginTop: '18rpx', color: '#b42318' }}>
+        <View className='error-text'>
           <Text>{copyError}</Text>
         </View>
       ) : null}
 
       {recentViewError ? (
-        <View style={{ marginTop: '18rpx', color: '#b42318' }}>
+        <View className='error-text'>
           <Text>{recentViewError}</Text>
         </View>
       ) : null}
