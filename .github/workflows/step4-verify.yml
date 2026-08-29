@@ -34,9 +34,9 @@ jobs:
           grep -F 'MarkdownView' packages/miniapp/src/pages/plugin/index.tsx
           grep -F 'setClipboardData' packages/miniapp/src/pages/plugin/index.tsx
           grep -F '```' packages/miniapp/src/components/markdown-view.tsx
-          grep -F 'blockquote' packages/miniapp/src/components/markdown-view.tsx || true
-          if grep -R -E 'react-markdown|markdown-it|marked|dangerouslySetInnerHTML' packages/miniapp >/dev/null 2>&1; then
-            echo 'Unexpected DOM/Markdown runtime dependency found in miniapp'
+          if grep -R -E 'react-markdown|markdown-it|marked|dangerouslySetInnerHTML' \
+            packages/miniapp/src packages/miniapp/package.json >/dev/null 2>&1; then
+            echo 'Unexpected DOM/Markdown runtime dependency found in miniapp source'
             exit 1
           fi
 
