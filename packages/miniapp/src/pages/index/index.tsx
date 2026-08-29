@@ -1,16 +1,16 @@
 import { Text, View } from '@tarojs/components'
-import Taro from '@tarojs/taro'
 import { useEffect, useState } from 'react'
 
-import { API_BASE_URL } from '../../config/api'
+import { apiClient } from '../../api/client'
 
-type CategoriesPayload = {
-  categories?: unknown
-}
+type Status = '请求中' | '成功'
 
 export default function Index() {
-  const [healthStatus, setHealthStatus] = useState<'请求中' | '成功'>('请求中')
+  const [categoriesStatus, setCategoriesStatus] = useState<Status>('请求中')
+  const [pluginsStatus, setPluginsStatus] = useState<Status>('请求中')
+  const [detailStatus, setDetailStatus] = useState<Status>('请求中')
   const [categoryCount, setCategoryCount] = useState<number | null>(null)
+  const [samplePluginName, setSamplePluginName] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -18,30 +18,24 @@ export default function Index() {
 
     void (async () => {
       try {
-        const healthResponse = await Taro.request({
-          url: `${API_BASE_URL}/api/health`,
-          method: 'GET',
-        })
-        if (healthResponse.statusCode < 200 || healthResponse.statusCode >= 300) {
-          throw new Error(`/api/health 请求失败（HTTP ${healthResponse.statusCode}）`)
-        }
-
-        const categoriesResponse = await Taro.request<CategoriesPayload>({
-          url: `${API_BASE_URL}/api/categories`,
-          method: 'GET',
-        })
-        if (categoriesResponse.statusCode < 200 || categoriesResponse.statusCode >= 300) {
-          throw new Error(`/api/categories 请求失败（HTTP ${categoriesResponse.statusCode}）`)
-        }
-
-        const categories = categoriesResponse.data.categories
-        if (!Array.isArray(categories)) {
-          throw new Error('/api/categories 返回结构不符合预期')
-        }
-
+        const categories = await apiClient.getCategories()
         if (!active) return
-        setHealthStatus('成功')
-        setCategoryCount(categories.length)
+        setCategoriesStatus('成功')
+        setCategoryCount(categories.categories.length)
+
+        const plugins = await apiClient.getPlugins({ page: 1, pageSize: 1 })
+        if (!active) return
+        setPluginsStatus('成功')
+
+        const sample = plugins.plugins[0]
+        if (!sample) {
+          throw new Error('/api/plugins 未返回可用于详情验证的插件')
+        }
+
+        const detail = await apiClient.getPlugin(sample.slug)
+        if (!active) return
+        setDetailStatus('成功')
+        setSamplePluginName(detail.plugin.name)
       } catch (caught) {
         if (!active) return
         setError(caught instanceof Error ? caught.message : String(caught))
@@ -59,10 +53,19 @@ export default function Index() {
         <Text>插件百宝阁（科研版）</Text>
       </View>
       <View>
-        <Text>API 健康检查：{error ? '失败' : healthStatus}</Text>
+        <Text>分类读取：{error ? '失败' : categoriesStatus}</Text>
       </View>
       <View>
         <Text>线上分类数量：{error ? '读取失败' : categoryCount ?? '请求中'}</Text>
+      </View>
+      <View>
+        <Text>插件列表读取：{error ? '失败' : pluginsStatus}</Text>
+      </View>
+      <View>
+        <Text>插件详情读取：{error ? '失败' : detailStatus}</Text>
+      </View>
+      <View>
+        <Text>验证插件：{error ? '读取失败' : samplePluginName ?? '请求中'}</Text>
       </View>
       {error ? (
         <View style={{ marginTop: '24rpx' }}>
