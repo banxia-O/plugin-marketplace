@@ -4,6 +4,7 @@ export default defineAppConfig({
     'pages/search/index',
     'pages/category/index',
     'pages/categories/index',
+    'pages/plugin/index',
     'pages/about/index',
   ],
   window: {
