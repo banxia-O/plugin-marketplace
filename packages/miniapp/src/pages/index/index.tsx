@@ -1,13 +1,30 @@
 import { Button, Input, Text, View } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
 
 import { HOME_CATEGORY_SHORTCUTS } from '../../config/home'
+import { clearRecentViews, getRecentViews, type RecentView } from '../../storage/recent-views'
 
 const sensitivityNotice = '请勿输入患者身份信息、未公开研究数据或其他敏感信息。'
 
 export default function Index() {
   const [keyword, setKeyword] = useState('')
+  const [recentViews, setRecentViews] = useState<RecentView[]>([])
+  const [recentError, setRecentError] = useState<string | null>(null)
+
+  const loadRecentViews = async () => {
+    try {
+      const views = await getRecentViews()
+      setRecentViews(views.slice(0, 6))
+      setRecentError(null)
+    } catch (caught) {
+      setRecentError(caught instanceof Error ? caught.message : String(caught))
+    }
+  }
+
+  useDidShow(() => {
+    void loadRecentViews()
+  })
 
   const goSearch = (rawKeyword: string) => {
     const q = rawKeyword.trim()
@@ -22,6 +39,22 @@ export default function Index() {
     void Taro.navigateTo({
       url: `/pages/category/index?category=${encodeURIComponent(slug)}&name=${encodeURIComponent(name)}`,
     })
+  }
+
+  const goPlugin = (slug: string) => {
+    void Taro.navigateTo({
+      url: `/pages/plugin/index?slug=${encodeURIComponent(slug)}`,
+    })
+  }
+
+  const clearRecent = async () => {
+    try {
+      await clearRecentViews()
+      setRecentViews([])
+      setRecentError(null)
+    } catch (caught) {
+      setRecentError(caught instanceof Error ? caught.message : String(caught))
+    }
   }
 
   return (
@@ -61,6 +94,52 @@ export default function Index() {
           搜索
         </Button>
       </View>
+
+      {recentViews.length > 0 ? (
+        <View style={{ marginBottom: '40rpx' }}>
+          <View
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '18rpx',
+            }}
+          >
+            <Text style={{ fontSize: '34rpx', fontWeight: '600' }}>最近浏览</Text>
+            <Text onClick={() => void clearRecent()} style={{ color: '#666666', fontSize: '26rpx' }}>
+              清空
+            </Text>
+          </View>
+
+          <View style={{ display: 'flex', flexDirection: 'column', gap: '14rpx' }}>
+            {recentViews.map((view) => (
+              <View
+                key={view.slug}
+                onClick={() => goPlugin(view.slug)}
+                style={{
+                  padding: '22rpx 24rpx',
+                  border: '1rpx solid #e5e5e5',
+                  borderRadius: '16rpx',
+                  background: '#ffffff',
+                }}
+              >
+                <View style={{ marginBottom: '6rpx', fontWeight: '600' }}>
+                  <Text>{view.name}</Text>
+                </View>
+                <View style={{ color: '#666666', fontSize: '26rpx' }}>
+                  <Text>{view.oneLiner}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {recentError ? (
+        <View style={{ marginBottom: '28rpx', color: '#b42318', fontSize: '26rpx' }}>
+          <Text>最近浏览读取失败：{recentError}</Text>
+        </View>
+      ) : null}
 
       <View style={{ marginBottom: '20rpx', fontSize: '34rpx', fontWeight: '600' }}>
         <Text>科研高频分类</Text>
