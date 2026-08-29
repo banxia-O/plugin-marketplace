@@ -42,13 +42,12 @@ jobs:
           grep -F "chip chip--active" packages/miniapp/src/pages/category/index.tsx
           grep -F "plugin-card__title" packages/miniapp/src/components/plugin-card.tsx
 
-      - name: Confirm no visual dependency growth
+      - name: Confirm no visual framework dependency
         run: |
           if grep -E 'taro-ui|nutui|vant|antd|tailwind|unocss' packages/miniapp/package.json >/dev/null 2>&1; then
             echo 'Unexpected UI framework dependency found'
             exit 1
           fi
-          git diff HEAD^ -- packages/miniapp/package.json pnpm-lock.yaml
 
       - name: Report miniapp build size
         run: |
