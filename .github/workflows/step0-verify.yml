@@ -25,16 +25,28 @@ jobs:
           cache: pnpm
 
       - name: Install and refresh lockfile
-        run: pnpm install --no-frozen-lockfile 2>&1 | tee step0-verification.log
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm install --no-frozen-lockfile 2>&1 | tee step0-verification.log
 
       - name: Confirm frozen lockfile
-        run: pnpm install --frozen-lockfile 2>&1 | tee -a step0-verification.log
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee -a step0-verification.log
 
       - name: Miniapp typecheck
-        run: pnpm --filter @ppx/miniapp typecheck 2>&1 | tee -a step0-verification.log
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @ppx/miniapp typecheck 2>&1 | tee -a step0-verification.log
 
       - name: Miniapp WeChat build
-        run: pnpm --filter @ppx/miniapp build 2>&1 | tee -a step0-verification.log
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @ppx/miniapp build 2>&1 | tee -a step0-verification.log
 
       - name: Confirm WeChat build output
         run: |
@@ -60,7 +72,9 @@ jobs:
           NODE
 
       - name: Existing workspace regression checks
+        shell: bash
         run: |
+          set -o pipefail
           pnpm -r test 2>&1 | tee -a step0-verification.log
           pnpm -r typecheck 2>&1 | tee -a step0-verification.log
           pnpm -r build 2>&1 | tee -a step0-verification.log
