@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { apiClient } from '../../api/client'
 import { MarkdownView } from '../../components/markdown-view'
+import { recordRecentView } from '../../storage/recent-views'
 
 type LoadState = 'loading' | 'ready' | 'error'
 
@@ -37,17 +38,32 @@ export default function PluginPage() {
   const [loadState, setLoadState] = useState<LoadState>(slug ? 'loading' : 'error')
   const [error, setError] = useState<string | null>(slug ? null : '缺少插件标识')
   const [copyError, setCopyError] = useState<string | null>(null)
+  const [recentViewError, setRecentViewError] = useState<string | null>(null)
 
   const loadPlugin = useCallback(async () => {
     if (!slug) return
 
     setLoadState('loading')
     setError(null)
+    setRecentViewError(null)
 
     try {
       const response = await apiClient.getPlugin(slug)
-      setPlugin(response.plugin)
+      const detail = response.plugin
+      setPlugin(detail)
       setLoadState('ready')
+
+      try {
+        await recordRecentView({
+          slug: detail.slug,
+          name: detail.name,
+          oneLiner: detail.oneLiner,
+          lastViewedAt: Date.now(),
+        })
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : String(caught)
+        setRecentViewError(`最近浏览保存失败：${message}`)
+      }
     } catch (caught) {
       setPlugin(null)
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -177,6 +193,12 @@ export default function PluginPage() {
       {copyError ? (
         <View style={{ marginTop: '18rpx', color: '#b42318' }}>
           <Text>{copyError}</Text>
+        </View>
+      ) : null}
+
+      {recentViewError ? (
+        <View style={{ marginTop: '18rpx', color: '#b42318' }}>
+          <Text>{recentViewError}</Text>
         </View>
       ) : null}
     </View>
