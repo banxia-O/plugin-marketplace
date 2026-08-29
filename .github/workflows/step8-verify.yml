@@ -1,0 +1,131 @@
+name: Step 8 Verification
+
+on:
+  push:
+    branches:
+      - feature/wechat-miniapp-v1
+    paths:
+      - 'packages/miniapp/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/step8-verify.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Root typecheck
+        run: pnpm typecheck
+
+      - name: Root test
+        run: pnpm test
+
+      - name: Root build
+        run: pnpm build
+
+      - name: Independent miniapp typecheck and build
+        run: |
+          pnpm --filter @ppx/miniapp typecheck
+          rm -rf packages/miniapp/dist
+          pnpm --filter @ppx/miniapp build
+          test -f packages/miniapp/dist/app.json
+          test -f packages/miniapp/dist/app.wxss
+          for page in index search category categories plugin about; do
+            test -f "packages/miniapp/dist/pages/$page/index.js"
+          done
+
+      - name: Measure package sizes and enforce main-package limit
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const root = 'packages/miniapp/dist'
+          const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'))
+          const subpackages = app.subPackages ?? app.subpackages ?? []
+          let totalBytes = 0
+          let files = 0
+          const walk = (dir) => {
+            for (const name of fs.readdirSync(dir)) {
+              const file = path.join(dir, name)
+              const stat = fs.statSync(file)
+              if (stat.isDirectory()) walk(file)
+              else { totalBytes += stat.size; files += 1 }
+            }
+          }
+          walk(root)
+          let mainBytes = totalBytes
+          if (subpackages.length) {
+            for (const pkg of subpackages) {
+              const pkgRoot = path.join(root, pkg.root)
+              if (!fs.existsSync(pkgRoot)) continue
+              let pkgBytes = 0
+              const sum = (dir) => {
+                for (const name of fs.readdirSync(dir)) {
+                  const file = path.join(dir, name)
+                  const stat = fs.statSync(file)
+                  if (stat.isDirectory()) sum(file)
+                  else pkgBytes += stat.size
+                }
+              }
+              sum(pkgRoot)
+              mainBytes -= pkgBytes
+            }
+          }
+          const mib = (n) => (n / 1024 / 1024).toFixed(3)
+          console.log(`Miniapp files: ${files}`)
+          console.log(`Main package: ${mainBytes} bytes (${mib(mainBytes)} MiB)`)
+          console.log(`Total package: ${totalBytes} bytes (${mib(totalBytes)} MiB)`)
+          console.log(`Subpackages: ${subpackages.length}`)
+          // Conservative check against the long-standing 2 MiB main-package ceiling.
+          if (mainBytes > 2 * 1024 * 1024) {
+            throw new Error(`Main package exceeds 2 MiB: ${mainBytes} bytes`)
+          }
+          NODE
+
+      - name: Confirm miniapp output does not bundle Web or Worker app dependencies
+        run: |
+          if grep -R -n -E '@ppx/shared|react-markdown|remark-gfm|react-router-dom|hono|wrangler|review-service|packages/frontend|packages/worker' packages/miniapp/dist >/tmp/miniapp-unexpected-runtime.txt 2>/dev/null; then
+            cat /tmp/miniapp-unexpected-runtime.txt
+            echo 'Unexpected Web/Worker/shared runtime reference found in miniapp output'
+            exit 1
+          fi
+
+      - name: Check changed-file scope and secrets
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          echo 'Changed files from main:'
+          git diff --name-only origin/main...HEAD
+
+          unexpected="$(git diff --name-only origin/main...HEAD | grep -Ev '^(AGENTS\.md|PLAN\.md|docs/10-科研Agent插件导航-PRD-v1\.md|packages/miniapp/|pnpm-lock\.yaml)$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo 'Unexpected Step 8/V1 diff paths:'
+            echo "$unexpected"
+            exit 1
+          fi
+
+          sensitive_files="$(git diff --name-only origin/main...HEAD | grep -Ei '(^|/)\.env($|\.)|\.(pem|p12|pfx|key)$|id_rsa|appsecret' || true)"
+          if [ -n "$sensitive_files" ]; then
+            echo 'Potential secret file committed:'
+            echo "$sensitive_files"
+            exit 1
+          fi
+
+          if grep -R -n -E 'APP_SECRET|APPSECRET|AppSecret|client_secret|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}' packages/miniapp >/tmp/miniapp-secret-scan.txt 2>/dev/null; then
+            cat /tmp/miniapp-secret-scan.txt
+            echo 'Potential secret material found in miniapp source'
+            exit 1
+          fi
+
+      - name: Report production dependency surface
+        run: pnpm --filter @ppx/miniapp list --prod --depth 0
