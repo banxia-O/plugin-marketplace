@@ -26,44 +26,48 @@ type PluginCardProps = {
 
 export function PluginCard({ plugin }: PluginCardProps) {
   const visibleCategories = plugin.categories.slice(0, 2)
+  const reviewBadgeClass = plugin.reviewStatus === 'rejected' ? 'badge badge--danger' : 'badge badge--status'
+  const agentBadgeClass =
+    plugin.agentMdStatus === 'ok'
+      ? 'badge badge--ok'
+      : plugin.agentMdStatus === 'pending'
+        ? 'badge badge--warning'
+        : 'badge badge--status'
 
   return (
     <View
+      className='plugin-card'
       onClick={() =>
         void Taro.navigateTo({
           url: `/pages/plugin/index?slug=${encodeURIComponent(plugin.slug)}`,
         })
       }
-      style={{
-        marginBottom: '20rpx',
-        padding: '24rpx',
-        border: '1rpx solid #e5e5e5',
-        borderRadius: '16rpx',
-        background: '#ffffff',
-      }}
     >
-      <View style={{ marginBottom: '8rpx', fontSize: '32rpx', fontWeight: '600' }}>
+      <View className='plugin-card__title'>
         <Text>{plugin.name}</Text>
       </View>
-      <View style={{ marginBottom: '14rpx', fontSize: '27rpx', color: '#555555' }}>
+      <View className='plugin-card__desc'>
         <Text>{plugin.oneLiner}</Text>
       </View>
 
       {visibleCategories.length > 0 ? (
-        <View style={{ marginBottom: '12rpx', fontSize: '24rpx', color: '#777777' }}>
-          <Text>
-            {visibleCategories
-              .map((category) => `${category.categoryName} · ${category.subcategoryName}`)
-              .join('  /  ')}
-          </Text>
+        <View className='badge-row'>
+          {visibleCategories.map((category) => (
+            <Text key={`${category.categorySlug}-${category.subcategorySlug}`} className='badge'>
+              {category.categoryName} · {category.subcategoryName}
+            </Text>
+          ))}
         </View>
       ) : null}
 
-      <View style={{ fontSize: '24rpx', color: '#666666' }}>
-        <Text>
-          {deployMethodLabel[plugin.deployMethod]} · Stars {plugin.stars} ·{' '}
-          {reviewStatusLabel[plugin.reviewStatus]} · {agentMdStatusLabel[plugin.agentMdStatus]}
-        </Text>
+      <View className='badge-row'>
+        <Text className='badge badge--deploy'>{deployMethodLabel[plugin.deployMethod]}</Text>
+        <Text className={reviewBadgeClass}>{reviewStatusLabel[plugin.reviewStatus]}</Text>
+        <Text className={agentBadgeClass}>{agentMdStatusLabel[plugin.agentMdStatus]}</Text>
+      </View>
+
+      <View className='meta-line'>
+        <Text>Stars {plugin.stars}</Text>
       </View>
     </View>
   )
