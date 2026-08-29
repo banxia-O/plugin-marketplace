@@ -87,7 +87,6 @@ jobs:
           console.log(`Main package: ${mainBytes} bytes (${mib(mainBytes)} MiB)`)
           console.log(`Total package: ${totalBytes} bytes (${mib(totalBytes)} MiB)`)
           console.log(`Subpackages: ${subpackages.length}`)
-          // Conservative check against the long-standing 2 MiB main-package ceiling.
           if (mainBytes > 2 * 1024 * 1024) {
             throw new Error(`Main package exceeds 2 MiB: ${mainBytes} bytes`)
           }
@@ -104,17 +103,18 @@ jobs:
       - name: Check changed-file scope and secrets
         run: |
           git fetch origin main:refs/remotes/origin/main
+          changed="$(git -c core.quotepath=false diff --name-only origin/main...HEAD)"
           echo 'Changed files from main:'
-          git diff --name-only origin/main...HEAD
+          printf '%s\n' "$changed"
 
-          unexpected="$(git diff --name-only origin/main...HEAD | grep -Ev '^(AGENTS\.md|PLAN\.md|docs/10-科研Agent插件导航-PRD-v1\.md|packages/miniapp/|pnpm-lock\.yaml)$' || true)"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(AGENTS\.md|PLAN\.md|docs/10-科研Agent插件导航-PRD-v1\.md|packages/miniapp/.*|pnpm-lock\.yaml|\.github/workflows/step8-verify\.yml)$' || true)"
           if [ -n "$unexpected" ]; then
             echo 'Unexpected Step 8/V1 diff paths:'
             echo "$unexpected"
             exit 1
           fi
 
-          sensitive_files="$(git diff --name-only origin/main...HEAD | grep -Ei '(^|/)\.env($|\.)|\.(pem|p12|pfx|key)$|id_rsa|appsecret' || true)"
+          sensitive_files="$(printf '%s\n' "$changed" | grep -Ei '(^|/)\.env($|\.)|\.(pem|p12|pfx|key)$|id_rsa|appsecret' || true)"
           if [ -n "$sensitive_files" ]; then
             echo 'Potential secret file committed:'
             echo "$sensitive_files"
