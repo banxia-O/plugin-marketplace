@@ -38,23 +38,26 @@ export default function CategoriesPage() {
   }
 
   return (
-    <View style={{ padding: '40rpx 32rpx 64rpx', fontSize: '30rpx', lineHeight: 1.6 }}>
-      <View style={{ marginBottom: '24rpx', fontSize: '38rpx', fontWeight: '600' }}>
+    <View className='page-shell'>
+      <View className='page-title'>
         <Text>全部分类</Text>
+      </View>
+      <View className='page-subtitle'>
+        <Text>完整分类与网站同源，点击大类进入插件列表</Text>
       </View>
 
       {loadState === 'loading' ? (
-        <View>
+        <View className='status-panel status-panel--loading'>
           <Text>分类加载中…</Text>
         </View>
       ) : null}
 
       {loadState === 'error' ? (
-        <View style={{ padding: '24rpx', border: '1rpx solid #e5e5e5', borderRadius: '16rpx' }}>
-          <View style={{ marginBottom: '12rpx' }}>
+        <View className='status-panel status-panel--error'>
+          <View className='status-panel__message'>
             <Text>分类加载失败：{error}</Text>
           </View>
-          <Button onClick={() => void loadCategories()} style={{ fontSize: '28rpx' }}>
+          <Button className='btn btn-ghost btn-compact' onClick={() => void loadCategories()}>
             重试
           </Button>
         </View>
@@ -63,24 +66,12 @@ export default function CategoriesPage() {
       {loadState === 'ready' ? (
         <View>
           {categories.map((category) => (
-            <View
-              key={category.slug}
-              style={{
-                marginBottom: '20rpx',
-                padding: '24rpx',
-                border: '1rpx solid #e5e5e5',
-                borderRadius: '16rpx',
-                background: '#ffffff',
-              }}
-            >
-              <View
-                onClick={() => goCategory(category)}
-                style={{ marginBottom: category.subcategories.length > 0 ? '12rpx' : '0', fontWeight: '600' }}
-              >
+            <View key={category.slug} className='card tap-card category-card' onClick={() => goCategory(category)}>
+              <View className='category-card__title'>
                 <Text>{category.name}</Text>
               </View>
               {category.subcategories.length > 0 ? (
-                <View style={{ fontSize: '26rpx', color: '#777777' }}>
+                <View className='category-card__subs'>
                   <Text>{category.subcategories.map((subcategory) => subcategory.name).join(' · ')}</Text>
                 </View>
               ) : null}
