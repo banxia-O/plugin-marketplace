@@ -83,7 +83,7 @@ export default function CategoryPage() {
     void loadPlugins(1, false)
   }, [loadPlugins])
 
-  const categoryName = categoryInfo?.name ?? routeName || '分类'
+  const categoryName = categoryInfo?.name ?? (routeName || '分类')
   const hasMore = listState === 'ready' && plugins.length < total
 
   return (
