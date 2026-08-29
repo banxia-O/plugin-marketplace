@@ -139,8 +139,8 @@ export default function PluginPage() {
       <View style={{ marginBottom: '12rpx', fontSize: '32rpx', fontWeight: '600' }}>
         <Text>原仓库地址</Text>
       </View>
-      <View userSelect style={{ marginBottom: '14rpx', color: '#555555', wordBreak: 'break-all' }}>
-        <Text>{plugin.repoUrl}</Text>
+      <View style={{ marginBottom: '14rpx', color: '#555555', wordBreak: 'break-all' }}>
+        <Text userSelect>{plugin.repoUrl}</Text>
       </View>
       <Button
         onClick={() => void copyText(plugin.repoUrl, '仓库地址已复制')}
