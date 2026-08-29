@@ -110,20 +110,13 @@ function renderInline(text: string): ReactNode[] {
     if (match[2] && match[3]) {
       const target = match[3].trim()
       nodes.push(
-        <Text
-          key={`link-${match.index}`}
-          onClick={() => void Taro.setClipboardData({ data: target })}
-          style={{ textDecoration: 'underline' }}
-        >
+        <Text key={`link-${match.index}`} className='md-link' onClick={() => void Taro.setClipboardData({ data: target })}>
           {match[2]}
         </Text>,
       )
     } else if (match[4]) {
       nodes.push(
-        <Text
-          key={`code-${match.index}`}
-          style={{ padding: '2rpx 8rpx', borderRadius: '6rpx', background: '#f4f4f4', fontFamily: 'monospace' }}
-        >
+        <Text key={`code-${match.index}`} className='md-inline-code'>
           {match[4]}
         </Text>,
       )
@@ -142,22 +135,22 @@ function renderInline(text: string): ReactNode[] {
   return nodes
 }
 
-function headingStyle(level: number) {
-  if (level === 1) return { fontSize: '38rpx', fontWeight: '700' as const, marginTop: '28rpx', marginBottom: '14rpx' }
-  if (level === 2) return { fontSize: '34rpx', fontWeight: '700' as const, marginTop: '26rpx', marginBottom: '12rpx' }
-  if (level === 3) return { fontSize: '31rpx', fontWeight: '600' as const, marginTop: '22rpx', marginBottom: '10rpx' }
-  return { fontSize: '29rpx', fontWeight: '600' as const, marginTop: '18rpx', marginBottom: '8rpx' }
+function headingClass(level: number): string {
+  if (level === 1) return 'md-heading md-h1'
+  if (level === 2) return 'md-heading md-h2'
+  if (level === 3) return 'md-heading md-h3'
+  return 'md-heading md-h4'
 }
 
 export function MarkdownView({ source }: { source: string }) {
   const blocks = parseMarkdown(source)
 
   return (
-    <View style={{ fontSize: '28rpx', lineHeight: 1.75 }}>
+    <View className='markdown-view'>
       {blocks.map((block, blockIndex) => {
         if (block.type === 'heading') {
           return (
-            <View key={blockIndex} style={headingStyle(block.level)}>
+            <View key={blockIndex} className={headingClass(block.level)}>
               <Text>{renderInline(block.text)}</Text>
             </View>
           )
@@ -165,7 +158,7 @@ export function MarkdownView({ source }: { source: string }) {
 
         if (block.type === 'paragraph') {
           return (
-            <View key={blockIndex} style={{ marginBottom: '18rpx' }}>
+            <View key={blockIndex} className='md-paragraph'>
               <Text>{renderInline(block.text)}</Text>
             </View>
           )
@@ -173,12 +166,10 @@ export function MarkdownView({ source }: { source: string }) {
 
         if (block.type === 'list') {
           return (
-            <View key={blockIndex} style={{ marginBottom: '18rpx' }}>
+            <View key={blockIndex} className='md-list'>
               {block.items.map((item, itemIndex) => (
-                <View key={itemIndex} style={{ display: 'flex', marginBottom: '8rpx' }}>
-                  <Text style={{ width: '44rpx', flexShrink: 0 }}>
-                    {block.ordered ? `${itemIndex + 1}.` : '•'}
-                  </Text>
+                <View key={itemIndex} className='md-list-item'>
+                  <Text className='md-list-marker'>{block.ordered ? `${itemIndex + 1}.` : '•'}</Text>
                   <Text style={{ flex: 1 }}>{renderInline(item)}</Text>
                 </View>
               ))}
@@ -188,16 +179,13 @@ export function MarkdownView({ source }: { source: string }) {
 
         if (block.type === 'code') {
           return (
-            <View
-              key={blockIndex}
-              style={{ marginBottom: '20rpx', padding: '20rpx', borderRadius: '12rpx', background: '#f5f5f5' }}
-            >
+            <View key={blockIndex} className='md-code'>
               {block.language ? (
-                <View style={{ marginBottom: '8rpx', color: '#777777', fontSize: '22rpx' }}>
+                <View className='md-code__lang'>
                   <Text>{block.language}</Text>
                 </View>
               ) : null}
-              <Text userSelect style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              <Text userSelect className='md-code__text'>
                 {block.code}
               </Text>
             </View>
@@ -206,16 +194,13 @@ export function MarkdownView({ source }: { source: string }) {
 
         if (block.type === 'quote') {
           return (
-            <View
-              key={blockIndex}
-              style={{ marginBottom: '18rpx', paddingLeft: '18rpx', borderLeft: '6rpx solid #d9d9d9', color: '#666666' }}
-            >
+            <View key={blockIndex} className='md-quote'>
               <Text>{renderInline(block.text)}</Text>
             </View>
           )
         }
 
-        return <View key={blockIndex} style={{ height: '1rpx', margin: '22rpx 0', background: '#e5e5e5' }} />
+        return <View key={blockIndex} className='md-rule' />
       })}
     </View>
   )
