@@ -1,8 +1,8 @@
 {
   "miniprogramRoot": "./dist",
   "projectname": "plugin-marketplace-research-miniapp",
-  "description": "插件百宝阁（科研版）Step 0 技术验证",
-  "appid": "touristappid",
+  "description": "插件百宝阁科研版微信小程序",
+  "appid": "wx33884029c2292001",
   "setting": {
     "urlCheck": true,
     "es6": false,
