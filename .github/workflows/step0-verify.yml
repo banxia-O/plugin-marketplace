@@ -1,0 +1,88 @@
+name: Step 0 Verification
+
+on:
+  push:
+    branches:
+      - feature/wechat-miniapp-v1
+    paths:
+      - 'packages/miniapp/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/step0-verify.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install and refresh lockfile
+        run: pnpm install --no-frozen-lockfile 2>&1 | tee step0-verification.log
+
+      - name: Confirm frozen lockfile
+        run: pnpm install --frozen-lockfile 2>&1 | tee -a step0-verification.log
+
+      - name: Miniapp typecheck
+        run: pnpm --filter @ppx/miniapp typecheck 2>&1 | tee -a step0-verification.log
+
+      - name: Miniapp WeChat build
+        run: pnpm --filter @ppx/miniapp build 2>&1 | tee -a step0-verification.log
+
+      - name: Confirm WeChat build output
+        run: |
+          for file in packages/miniapp/dist/app.json packages/miniapp/dist/pages/index/index.js; do
+            if [ ! -f "$file" ]; then
+              echo "Missing expected build output: $file" | tee -a step0-verification.log
+              exit 1
+            fi
+          done
+          echo "WeChat build output exists." | tee -a step0-verification.log
+
+      - name: Verify production API boundary
+        run: |
+          node <<'NODE' 2>&1 | tee -a step0-verification.log
+          const base = 'https://plugin.md-banxia.cn'
+          const health = await fetch(`${base}/api/health`)
+          if (!health.ok) throw new Error(`/api/health failed: ${health.status}`)
+          const categories = await fetch(`${base}/api/categories`)
+          if (!categories.ok) throw new Error(`/api/categories failed: ${categories.status}`)
+          const body = await categories.json()
+          if (!Array.isArray(body.categories)) throw new Error('/api/categories shape mismatch')
+          console.log(`Production API OK; categories=${body.categories.length}`)
+          NODE
+
+      - name: Existing workspace regression checks
+        run: |
+          pnpm -r test 2>&1 | tee -a step0-verification.log
+          pnpm -r typecheck 2>&1 | tee -a step0-verification.log
+          pnpm -r build 2>&1 | tee -a step0-verification.log
+
+      - name: Commit generated lockfile
+        if: success()
+        run: |
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo "Lockfile already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(miniapp): update pnpm lockfile"
+          git push
+
+      - name: Persist failure log
+        if: failure()
+        run: |
+          git add -f step0-verification.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(miniapp): capture Step 0 verification failure" || exit 0
+          git push

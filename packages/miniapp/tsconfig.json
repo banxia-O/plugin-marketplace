@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "lib": ["ES2017", "DOM"],
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "allowSyntheticDefaultImports": true,
+    "declaration": false,
+    "noEmit": true,
+    "verbatimModuleSyntax": false,
+    "typeRoots": [
+      "node_modules/@types",
+      "node_modules/@tarojs"
+    ]
+  },
+  "include": [
+    "config/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}
