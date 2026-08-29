@@ -58,75 +58,49 @@ export default function Index() {
   }
 
   return (
-    <View style={{ padding: '40rpx 32rpx 64rpx', fontSize: '30rpx', lineHeight: 1.6 }}>
-      <View style={{ marginBottom: '8rpx', fontSize: '42rpx', fontWeight: '600' }}>
-        <Text>插件百宝阁（科研版）</Text>
-      </View>
-      <View style={{ marginBottom: '28rpx', color: '#666666' }}>
-        <Text>给科研 Agent 找趁手的工具</Text>
+    <View className='page-shell'>
+      <View className='hero'>
+        <View className='hero-title'>
+          <Text>插件百宝阁（科研版）</Text>
+        </View>
+        <View className='hero-subtitle'>
+          <Text>给科研 Agent 找趁手的工具</Text>
+        </View>
       </View>
 
-      <View style={{ marginBottom: '16rpx', fontSize: '24rpx', color: '#777777' }}>
+      <View className='sensitivity-notice'>
         <Text>{sensitivityNotice}</Text>
       </View>
 
-      <View style={{ marginBottom: '40rpx' }}>
+      <View className='section'>
         <Input
+          className='search-input'
           value={keyword}
           placeholder='搜插件、功能或科研场景'
           confirmType='search'
           onInput={(event) => setKeyword(event.detail.value)}
           onConfirm={(event) => goSearch(event.detail.value)}
-          style={{
-            boxSizing: 'border-box',
-            width: '100%',
-            minHeight: '88rpx',
-            padding: '20rpx 24rpx',
-            border: '1rpx solid #d9d9d9',
-            borderRadius: '16rpx',
-            background: '#ffffff',
-          }}
         />
-        <Button
-          onClick={() => goSearch(keyword)}
-          style={{ marginTop: '16rpx', fontSize: '30rpx' }}
-        >
+        <Button className='btn btn-primary' onClick={() => goSearch(keyword)} style={{ marginTop: '16rpx' }}>
           搜索
         </Button>
       </View>
 
       {recentViews.length > 0 ? (
-        <View style={{ marginBottom: '40rpx' }}>
-          <View
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '18rpx',
-            }}
-          >
-            <Text style={{ fontSize: '34rpx', fontWeight: '600' }}>最近浏览</Text>
-            <Text onClick={() => void clearRecent()} style={{ color: '#666666', fontSize: '26rpx' }}>
+        <View className='section'>
+          <View className='section-header'>
+            <Text className='section-title'>最近浏览</Text>
+            <Text className='text-action' onClick={() => void clearRecent()}>
               清空
             </Text>
           </View>
-
-          <View style={{ display: 'flex', flexDirection: 'column', gap: '14rpx' }}>
+          <View className='recent-list'>
             {recentViews.map((view) => (
-              <View
-                key={view.slug}
-                onClick={() => goPlugin(view.slug)}
-                style={{
-                  padding: '22rpx 24rpx',
-                  border: '1rpx solid #e5e5e5',
-                  borderRadius: '16rpx',
-                  background: '#ffffff',
-                }}
-              >
-                <View style={{ marginBottom: '6rpx', fontWeight: '600' }}>
+              <View key={view.slug} className='card tap-card recent-card' onClick={() => goPlugin(view.slug)}>
+                <View className='recent-card__title'>
                   <Text>{view.name}</Text>
                 </View>
-                <View style={{ color: '#666666', fontSize: '26rpx' }}>
+                <View className='recent-card__desc'>
                   <Text>{view.oneLiner}</Text>
                 </View>
               </View>
@@ -136,44 +110,33 @@ export default function Index() {
       ) : null}
 
       {recentError ? (
-        <View style={{ marginBottom: '28rpx', color: '#b42318', fontSize: '26rpx' }}>
+        <View className='error-text'>
           <Text>最近浏览读取失败：{recentError}</Text>
         </View>
       ) : null}
 
-      <View style={{ marginBottom: '20rpx', fontSize: '34rpx', fontWeight: '600' }}>
-        <Text>科研高频分类</Text>
-      </View>
-      <View style={{ display: 'flex', flexWrap: 'wrap', gap: '16rpx', marginBottom: '28rpx' }}>
-        {HOME_CATEGORY_SHORTCUTS.map((category) => (
-          <View
-            key={category.slug}
-            onClick={() => goCategory(category.slug, category.name)}
-            style={{
-              boxSizing: 'border-box',
-              width: 'calc(50% - 8rpx)',
-              padding: '24rpx',
-              border: '1rpx solid #e5e5e5',
-              borderRadius: '16rpx',
-              background: '#ffffff',
-            }}
-          >
-            <Text>{category.name}</Text>
-          </View>
-        ))}
+      <View className='section'>
+        <View className='section-header'>
+          <Text className='section-title'>科研高频分类</Text>
+        </View>
+        <View className='category-grid'>
+          {HOME_CATEGORY_SHORTCUTS.map((category) => (
+            <View
+              key={category.slug}
+              className='category-shortcut'
+              onClick={() => goCategory(category.slug, category.name)}
+            >
+              <Text>{category.name}</Text>
+            </View>
+          ))}
+        </View>
       </View>
 
-      <Button
-        onClick={() => void Taro.navigateTo({ url: '/pages/categories/index' })}
-        style={{ marginBottom: '20rpx', fontSize: '30rpx' }}
-      >
+      <Button className='btn btn-secondary' onClick={() => void Taro.navigateTo({ url: '/pages/categories/index' })}>
         全部分类
       </Button>
 
-      <View
-        onClick={() => void Taro.navigateTo({ url: '/pages/about/index' })}
-        style={{ padding: '20rpx 0', textAlign: 'center', color: '#666666' }}
-      >
+      <View className='footer-link' onClick={() => void Taro.navigateTo({ url: '/pages/about/index' })}>
         <Text>关于 / 隐私</Text>
       </View>
     </View>
