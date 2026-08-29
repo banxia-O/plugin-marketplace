@@ -1,0 +1,112 @@
+name: Step 1 Verification
+
+on:
+  push:
+    branches:
+      - feature/wechat-miniapp-v1
+    paths:
+      - 'packages/miniapp/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/step1-verify.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Refresh lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Confirm frozen install
+        run: pnpm install --frozen-lockfile
+
+      - name: Miniapp typecheck
+        run: pnpm --filter @ppx/miniapp typecheck
+
+      - name: Miniapp WeChat build
+        run: pnpm --filter @ppx/miniapp build
+
+      - name: Confirm shared types stay type-only
+        run: |
+          if grep -R "zod" packages/miniapp/dist >/dev/null 2>&1; then
+            echo "Unexpected Zod runtime found in miniapp bundle"
+            exit 1
+          fi
+          echo "No Zod runtime found in miniapp bundle."
+
+      - name: Verify production API contract
+        run: |
+          node <<'NODE'
+          const base = 'https://plugin.md-banxia.cn'
+
+          async function get(path) {
+            const response = await fetch(`${base}${path}`)
+            if (!response.ok) throw new Error(`${path} failed: ${response.status}`)
+            return response.json()
+          }
+
+          const categoriesBody = await get('/api/categories')
+          if (!Array.isArray(categoriesBody.categories) || categoriesBody.categories.length === 0) {
+            throw new Error('/api/categories returned no categories')
+          }
+
+          const firstCategory = categoriesBody.categories.find(
+            (category) => Array.isArray(category.subcategories) && category.subcategories.length > 0,
+          )
+          if (!firstCategory) throw new Error('No category with subcategories available for verification')
+
+          const firstSubcategory = firstCategory.subcategories[0]
+          const params = new URLSearchParams({
+            category: firstCategory.slug,
+            subcategory: firstSubcategory.slug,
+            page: '1',
+            pageSize: '1',
+          })
+          const pluginsBody = await get(`/api/plugins?${params}`)
+          if (!Array.isArray(pluginsBody.plugins)) throw new Error('/api/plugins shape mismatch')
+
+          const searchBody = await get('/api/plugins?q=%E6%96%87%E7%8C%AE&page=1&pageSize=1')
+          if (!Array.isArray(searchBody.plugins)) throw new Error('/api/plugins q search shape mismatch')
+
+          const sampleList = pluginsBody.plugins.length > 0 ? pluginsBody.plugins : searchBody.plugins
+          const sample = sampleList[0]
+          if (!sample?.slug) throw new Error('No plugin available for detail verification')
+
+          const detailBody = await get(`/api/plugins/${encodeURIComponent(sample.slug)}`)
+          if (!detailBody.plugin || detailBody.plugin.slug !== sample.slug) {
+            throw new Error('/api/plugins/:slug shape mismatch')
+          }
+
+          console.log(
+            `Step 1 API OK; categories=${categoriesBody.categories.length}; sample=${sample.slug}`,
+          )
+          NODE
+
+      - name: Existing workspace regression checks
+        run: |
+          pnpm -r test
+          pnpm -r typecheck
+          pnpm -r build
+
+      - name: Commit generated lockfile
+        if: success()
+        run: |
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo "Lockfile already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(miniapp): update Step 1 lockfile"
+          git push
