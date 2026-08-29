@@ -87,54 +87,39 @@ export default function CategoryPage() {
   const hasMore = listState === 'ready' && plugins.length < total
 
   return (
-    <View style={{ padding: '40rpx 32rpx 64rpx', fontSize: '30rpx', lineHeight: 1.6 }}>
-      <View style={{ marginBottom: '8rpx', fontSize: '38rpx', fontWeight: '600' }}>
+    <View className='page-shell'>
+      <View className='page-title'>
         <Text>{categoryName}</Text>
       </View>
-      <View style={{ marginBottom: '24rpx', color: '#777777', fontSize: '24rpx' }}>
+      <View className='page-subtitle'>
         <Text>分类标识：{categorySlug || '缺失'}</Text>
       </View>
 
       {categoryError ? (
-        <View style={{ marginBottom: '24rpx', padding: '20rpx', border: '1rpx solid #e5e5e5', borderRadius: '16rpx' }}>
-          <View style={{ marginBottom: '12rpx' }}>
+        <View className='status-panel status-panel--error' style={{ marginBottom: '24rpx' }}>
+          <View className='status-panel__message'>
             <Text>分类信息加载失败：{categoryError}</Text>
           </View>
-          <Button onClick={() => void loadCategoryInfo()} style={{ fontSize: '28rpx' }}>
+          <Button className='btn btn-ghost btn-compact' onClick={() => void loadCategoryInfo()}>
             重试分类信息
           </Button>
         </View>
       ) : null}
 
       {categoryInfo && categoryInfo.subcategories.length > 0 ? (
-        <View style={{ marginBottom: '28rpx' }}>
-          <View style={{ marginBottom: '12rpx', fontSize: '28rpx', fontWeight: '600' }}>
-            <Text>子分类</Text>
+        <View className='section'>
+          <View className='section-header'>
+            <Text className='section-title'>子分类</Text>
           </View>
-          <View style={{ display: 'flex', flexWrap: 'wrap', gap: '12rpx' }}>
-            <View
-              onClick={() => setSelectedSubcategory('')}
-              style={{
-                padding: '12rpx 18rpx',
-                border: '1rpx solid #d9d9d9',
-                borderRadius: '999rpx',
-                background: selectedSubcategory ? '#ffffff' : '#f2f2f2',
-                fontSize: '25rpx',
-              }}
-            >
+          <View className='chip-row'>
+            <View className={selectedSubcategory ? 'chip' : 'chip chip--active'} onClick={() => setSelectedSubcategory('')}>
               <Text>全部</Text>
             </View>
             {categoryInfo.subcategories.map((subcategory) => (
               <View
                 key={subcategory.slug}
+                className={selectedSubcategory === subcategory.slug ? 'chip chip--active' : 'chip'}
                 onClick={() => setSelectedSubcategory(subcategory.slug)}
-                style={{
-                  padding: '12rpx 18rpx',
-                  border: '1rpx solid #d9d9d9',
-                  borderRadius: '999rpx',
-                  background: selectedSubcategory === subcategory.slug ? '#f2f2f2' : '#ffffff',
-                  fontSize: '25rpx',
-                }}
               >
                 <Text>{subcategory.name}</Text>
               </View>
@@ -144,31 +129,31 @@ export default function CategoryPage() {
       ) : null}
 
       {listState === 'loading' ? (
-        <View>
+        <View className='status-panel status-panel--loading'>
           <Text>插件加载中…</Text>
         </View>
       ) : null}
 
       {listState === 'error' ? (
-        <View style={{ padding: '24rpx', border: '1rpx solid #e5e5e5', borderRadius: '16rpx' }}>
-          <View style={{ marginBottom: '12rpx' }}>
+        <View className='status-panel status-panel--error'>
+          <View className='status-panel__message'>
             <Text>插件加载失败：{listError}</Text>
           </View>
-          <Button onClick={() => void loadPlugins(1, false)} style={{ fontSize: '28rpx' }}>
+          <Button className='btn btn-ghost btn-compact' onClick={() => void loadPlugins(1, false)}>
             重试
           </Button>
         </View>
       ) : null}
 
       {listState === 'ready' && total === 0 ? (
-        <View>
+        <View className='status-panel status-panel--empty'>
           <Text>这个分类暂时没有插件。</Text>
         </View>
       ) : null}
 
       {plugins.length > 0 ? (
         <View>
-          <View style={{ marginBottom: '20rpx', color: '#666666', fontSize: '26rpx' }}>
+          <View className='list-summary' style={{ marginBottom: '20rpx' }}>
             <Text>共 {total} 个插件</Text>
           </View>
           {plugins.map((plugin) => (
@@ -178,16 +163,17 @@ export default function CategoryPage() {
       ) : null}
 
       {listError && listState === 'ready' ? (
-        <View style={{ marginBottom: '16rpx', color: '#b42318', fontSize: '26rpx' }}>
+        <View className='error-text'>
           <Text>加载更多失败：{listError}</Text>
         </View>
       ) : null}
 
       {hasMore ? (
         <Button
+          className='btn btn-ghost'
           disabled={loadingMore}
           onClick={() => void loadPlugins(page + 1, true)}
-          style={{ marginTop: '12rpx', fontSize: '28rpx' }}
+          style={{ marginTop: '12rpx' }}
         >
           {loadingMore ? '加载中…' : '加载更多'}
         </Button>
