@@ -1,0 +1,85 @@
+name: Step 4 Verification
+
+on:
+  push:
+    branches:
+      - feature/wechat-miniapp-v1
+    paths:
+      - 'packages/miniapp/**'
+      - '.github/workflows/step4-verify.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+
+      - name: Miniapp typecheck
+        run: pnpm --filter @ppx/miniapp typecheck
+
+      - name: Miniapp WeChat build
+        run: pnpm --filter @ppx/miniapp build
+
+      - name: Confirm Step 4 output and lightweight renderer
+        run: |
+          test -f packages/miniapp/dist/pages/plugin/index.js
+          grep -F 'MarkdownView' packages/miniapp/src/pages/plugin/index.tsx
+          grep -F 'setClipboardData' packages/miniapp/src/pages/plugin/index.tsx
+          grep -F '```' packages/miniapp/src/components/markdown-view.tsx
+          grep -F 'blockquote' packages/miniapp/src/components/markdown-view.tsx || true
+          if grep -R -E 'react-markdown|markdown-it|marked|dangerouslySetInnerHTML' packages/miniapp >/dev/null 2>&1; then
+            echo 'Unexpected DOM/Markdown runtime dependency found in miniapp'
+            exit 1
+          fi
+
+      - name: Verify production detail reuses stored agent md
+        run: |
+          node <<'NODE'
+          const base = 'https://plugin.md-banxia.cn'
+
+          async function get(path) {
+            const response = await fetch(`${base}${path}`)
+            if (!response.ok) throw new Error(`${path} failed: ${response.status}`)
+            return response.json()
+          }
+
+          let candidate = null
+          for (let page = 1; page <= 5 && !candidate; page += 1) {
+            const list = await get(`/api/plugins?page=${page}&pageSize=40`)
+            candidate = list.plugins.find((plugin) => plugin.agentMdStatus === 'ok') ?? null
+            if (list.plugins.length < 40) break
+          }
+          if (!candidate?.slug) throw new Error('No plugin with agentMdStatus=ok found for Step 4 verification')
+
+          const detailBody = await get(`/api/plugins/${encodeURIComponent(candidate.slug)}`)
+          const plugin = detailBody.plugin
+          if (!plugin || plugin.slug !== candidate.slug) throw new Error('Plugin detail contract mismatch')
+          if (typeof plugin.agentMd !== 'string' || plugin.agentMd.trim().length === 0) {
+            throw new Error(`Stored agent.md missing for ${candidate.slug}`)
+          }
+          for (const key of ['repoUrl', 'oneLiner', 'deployMethod', 'reviewStatus', 'supportedPlatforms', 'license', 'originalAuthor']) {
+            if (!(key in plugin)) throw new Error(`Plugin detail missing ${key}`)
+          }
+          console.log(`Step 4 stored agent.md OK; slug=${plugin.slug}; chars=${plugin.agentMd.length}`)
+          NODE
+
+      - name: Confirm Step 4 scope boundaries
+        run: |
+          if grep -R -E 'deepseek|chat/completions|review-service|generateAgentMd|requirePrivacyAuthorize|setStorage' packages/miniapp/src >/dev/null 2>&1; then
+            echo 'Out-of-scope generation, privacy, or Step 5 storage code leaked into Step 4'
+            exit 1
+          fi
+
+      - name: Existing workspace regression checks
+        run: |
+          pnpm -r test
+          pnpm -r typecheck
+          pnpm -r build
