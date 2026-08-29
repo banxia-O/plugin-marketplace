@@ -8,8 +8,9 @@ export default defineAppConfig({
     'pages/about/index',
   ],
   window: {
+    backgroundColor: '#F6F2FF',
     backgroundTextStyle: 'light',
-    navigationBarBackgroundColor: '#ffffff',
+    navigationBarBackgroundColor: '#F6F2FF',
     navigationBarTitleText: '插件百宝阁（科研版）',
     navigationBarTextStyle: 'black',
   },
