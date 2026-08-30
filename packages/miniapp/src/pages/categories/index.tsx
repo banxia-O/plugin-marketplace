@@ -43,7 +43,7 @@ export default function CategoriesPage() {
         <Text>全部分类</Text>
       </View>
       <View className='page-subtitle'>
-        <Text>完整分类与网站同源，点击大类进入插件列表</Text>
+        <Text>点击大类进入插件列表</Text>
       </View>
 
       {loadState === 'loading' ? (
