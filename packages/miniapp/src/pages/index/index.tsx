@@ -62,7 +62,7 @@ export default function Index() {
           <Text>插件百宝阁（科研版）</Text>
         </View>
         <View className='hero-subtitle'>
-          <Text>给科研 Agent 找趁手的工具</Text>
+          <Text>给 Agent 找趁手的科研工具</Text>
         </View>
       </View>
 
