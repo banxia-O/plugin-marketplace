@@ -27,7 +27,7 @@ button::after {
   color: #2D2A3E;
   font-weight: 700;
   letter-spacing: 1rpx;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .hero-title {
@@ -172,21 +172,38 @@ button::after {
 .category-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 16rpx;
+  justify-content: space-between;
 }
 
 .category-shortcut {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  width: calc(50% - 8rpx);
+  width: 48.5%;
+  flex: 0 0 48.5%;
   min-height: 112rpx;
+  margin-bottom: 16rpx;
   padding: 22rpx 24rpx;
   border: 1rpx solid #E8E4FF;
   border-radius: 22rpx;
   background: #FFFFFF;
   color: #514A78;
   font-weight: 600;
+  word-break: break-word;
+}
+
+@media (min-width: 600px) {
+  .category-shortcut {
+    width: 31.5%;
+    flex-basis: 31.5%;
+  }
+}
+
+@media (min-width: 900px) {
+  .category-shortcut {
+    width: 23.5%;
+    flex-basis: 23.5%;
+  }
 }
 
 .recent-list {
@@ -202,14 +219,14 @@ button::after {
 .recent-card__title {
   margin-bottom: 4rpx;
   font-weight: 600;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .recent-card__desc {
   color: #7B7890;
   font-size: 25rpx;
   line-height: 1.55;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .status-panel {
@@ -236,14 +253,14 @@ button::after {
 
 .status-panel__message {
   margin-bottom: 16rpx;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .error-text {
   margin-bottom: 16rpx;
   color: #B65B5B;
   font-size: 25rpx;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .plugin-card {
@@ -257,7 +274,7 @@ button::after {
   font-size: 32rpx;
   font-weight: 600;
   line-height: 1.45;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .plugin-card__desc {
@@ -265,7 +282,7 @@ button::after {
   color: #6F6A82;
   font-size: 26rpx;
   line-height: 1.6;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .badge-row {
@@ -317,7 +334,7 @@ button::after {
   margin-top: 12rpx;
   color: #8A8699;
   font-size: 23rpx;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .chip-row {
@@ -354,14 +371,14 @@ button::after {
   min-height: 64rpx;
   color: #3D3850;
   font-weight: 600;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .category-card__subs {
   color: #7B7890;
   font-size: 25rpx;
   line-height: 1.65;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .detail-card {
@@ -392,7 +409,7 @@ button::after {
   flex: 1;
   color: #3D3850;
   font-size: 26rpx;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .repo-box {
@@ -413,14 +430,16 @@ button::after {
   color: #3D3850;
   font-size: 28rpx;
   line-height: 1.8;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .md-heading {
   color: #2D2A3E;
   font-weight: 700;
   line-height: 1.45;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .md-h1 {
@@ -467,11 +486,13 @@ button::after {
   background: #F3F0FF;
   color: #544C91;
   font-family: monospace;
+  word-break: break-word;
 }
 
 .md-link {
   color: #2F8F85;
   text-decoration: underline;
+  word-break: break-word;
 }
 
 .md-code {
@@ -525,7 +546,7 @@ button::after {
   color: #605B73;
   font-size: 26rpx;
   line-height: 1.75;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .about-paragraph:last-child {
