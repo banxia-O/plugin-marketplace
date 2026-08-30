@@ -5,8 +5,6 @@ import { useState } from 'react'
 import { HOME_CATEGORY_SHORTCUTS } from '../../config/home'
 import { clearRecentViews, getRecentViews, type RecentView } from '../../storage/recent-views'
 
-const sensitivityNotice = '请勿输入患者身份信息、未公开研究数据或其他敏感信息。'
-
 export default function Index() {
   const [keyword, setKeyword] = useState('')
   const [recentViews, setRecentViews] = useState<RecentView[]>([])
@@ -66,10 +64,6 @@ export default function Index() {
         <View className='hero-subtitle'>
           <Text>给科研 Agent 找趁手的工具</Text>
         </View>
-      </View>
-
-      <View className='sensitivity-notice'>
-        <Text>{sensitivityNotice}</Text>
       </View>
 
       <View className='section'>
