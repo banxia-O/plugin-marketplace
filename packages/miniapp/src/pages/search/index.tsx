@@ -7,7 +7,6 @@ import { apiClient } from '../../api/client'
 import { PluginCard } from '../../components/plugin-card'
 
 const PAGE_SIZE = 12
-const sensitivityNotice = '请勿输入患者身份信息、未公开研究数据或其他敏感信息。'
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
 
 function readInitialQuery(): string {
@@ -99,10 +98,6 @@ export default function SearchPage() {
         <Button className='btn btn-primary' onClick={submitSearch} style={{ marginTop: '16rpx' }}>
           搜索
         </Button>
-      </View>
-
-      <View className='sensitivity-notice'>
-        <Text>{sensitivityNotice}</Text>
       </View>
 
       {loadState === 'idle' ? (
