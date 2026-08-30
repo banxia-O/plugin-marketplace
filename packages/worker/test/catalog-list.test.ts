@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import { PluginListQuery } from '@ppx/shared';
-import { getCategories, getTrendingPlugins, listPlugins } from '../src/db.js';
+import { getCategories, getPluginBySlug, getTrendingPlugins, listPlugins } from '../src/db.js';
 
 const SCHEMA = `
 CREATE TABLE categories (
@@ -97,6 +97,46 @@ describe('catalog queries', () => {
     expect(result.total).toBe(120);
     expect(result.plugins).toHaveLength(120);
     expect(result.plugins.every((plugin) => plugin.categories[0]?.categorySlug === 'dev')).toBe(true);
+  });
+
+  it('resolves the retired Claude Scientific Skills slug to the canonical plugin', async () => {
+    await db
+      .prepare(
+        'INSERT INTO plugins (id, name, slug, one_liner, repo_url) VALUES (?, ?, ?, ?, ?)',
+      )
+      .bind(
+        121,
+        'Scientific Agent Skills',
+        'k-dense-ai-scientific-agent-skills',
+        'Scientific Agent Skills',
+        'https://github.com/K-Dense-AI/scientific-agent-skills',
+      )
+      .run();
+
+    const result = await getPluginBySlug(db, 'denden047-claude-scientific-skills');
+
+    expect(result).toMatchObject({
+      id: 121,
+      slug: 'k-dense-ai-scientific-agent-skills',
+      repoUrl: 'https://github.com/K-Dense-AI/scientific-agent-skills',
+    });
+  });
+
+  it('returns a plugin whose slug is constructor without treating it as an alias', async () => {
+    await db
+      .prepare(
+        'INSERT INTO plugins (id, name, slug, one_liner, repo_url) VALUES (?, ?, ?, ?, ?)',
+      )
+      .bind(121, 'Constructor Plugin', 'constructor', 'Constructor Plugin', 'https://github.com/example/constructor')
+      .run();
+
+    const result = await getPluginBySlug(db, 'constructor');
+
+    expect(result).toMatchObject({
+      id: 121,
+      slug: 'constructor',
+      repoUrl: 'https://github.com/example/constructor',
+    });
   });
 
   it('ranks plugins by growth from the latest baseline at least 30 days old', async () => {

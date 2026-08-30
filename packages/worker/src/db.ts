@@ -361,8 +361,13 @@ export async function listPlugins(
   return { plugins, total };
 }
 
+const PLUGIN_SLUG_ALIASES: ReadonlyMap<string, string> = new Map([
+  ['denden047-claude-scientific-skills', 'k-dense-ai-scientific-agent-skills'],
+]);
+
 export async function getPluginBySlug(db: D1Database, slug: string): Promise<PluginDetail | null> {
-  const row = await db.prepare('SELECT * FROM plugins WHERE slug = ?').bind(slug).first<PluginRow>();
+  const canonicalSlug = PLUGIN_SLUG_ALIASES.get(slug) ?? slug;
+  const row = await db.prepare('SELECT * FROM plugins WHERE slug = ?').bind(canonicalSlug).first<PluginRow>();
   if (!row) return null;
   const refs = await refsFor(db, [row.id]);
 
