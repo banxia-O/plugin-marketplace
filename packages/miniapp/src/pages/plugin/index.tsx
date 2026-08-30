@@ -142,7 +142,6 @@ export default function PluginPage() {
         <DetailRow label='仓库更新' value={formatDate(plugin.lastRepoUpdate)} />
         <DetailRow label='审核状态' value={reviewStatusLabel[plugin.reviewStatus]} />
         <DetailRow label='agent.md' value={agentStatusLabel[plugin.agentMdStatus]} />
-        <DetailRow label='支持平台' value={plugin.supportedPlatforms.length ? plugin.supportedPlatforms.join(' / ') : '暂无'} />
         <DetailRow label='许可证' value={plugin.license || '暂无'} />
         <DetailRow label='原作者' value={plugin.originalAuthor || '暂无'} />
       </View>
